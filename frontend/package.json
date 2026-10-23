@@ -4,6 +4,7 @@
   "version": "1.8.0",
   "type": "module",
   "scripts": {
+    "test:core-download": "node --test scripts/test-core-download.mjs scripts/test-cloak-fingerprint.mjs",
     "ensure:native": "node ./scripts/ensure-rollup-native.mjs",
     "postinstall": "npm run ensure:native",
     "dev": "node ./scripts/dev-watcher.mjs",

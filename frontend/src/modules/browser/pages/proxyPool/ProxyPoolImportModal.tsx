@@ -1,4 +1,5 @@
 import { Button, FormItem, Input, Modal, Select, Textarea } from '../../../../shared/components'
+import type { ProxyImportSource } from '../../api'
 import type { BrowserProxy } from '../../types'
 import {
   CHAIN_QUICK_IMPORT_TEMPLATE,
@@ -20,6 +21,8 @@ interface ProxyPoolImportModalProps {
   importDnsServers: string
   importNamePrefix: string
   importGroupName: string
+  webshareApiKey: string
+  fetchingWebshare: boolean
   chainImportText: string
   directImportText: string
   chainImportForm: ChainImportForm
@@ -27,6 +30,15 @@ interface ProxyPoolImportModalProps {
   fetchingImportUrl: boolean
   fetchProxyOptions: BrowserProxy[]
   canParseImport: boolean
+  importSources: ProxyImportSource[]
+  selectedImportSourceId: string
+  importSourceName: string
+  savingSource: boolean
+  loadingSources: boolean
+  onSelectImportSource: (id: string) => void
+  onImportSourceNameChange: (value: string) => void
+  onSaveImportSource: () => void
+  onForgetImportSource: () => void
   onClose: () => void
   onParse: () => void
   onFetchImportUrl: () => void
@@ -37,6 +49,8 @@ interface ProxyPoolImportModalProps {
   onImportDnsServersChange: (nextValue: string) => void
   onImportNamePrefixChange: (nextValue: string) => void
   onImportGroupNameChange: (nextValue: string) => void
+  onWebshareApiKeyChange: (nextValue: string) => void
+  onFetchWebshare: () => void
   onChainImportTextChange: (nextValue: string) => void
   onDirectImportTextChange: (nextValue: string) => void
   onApplyChainJSON: () => void
@@ -54,6 +68,7 @@ const importModeTabs: Array<{ value: ProxyImportMode; label: string; hint: strin
   { value: 'clash', label: 'Clash 订阅 / YAML', hint: '订阅或 Clash 节点列表' },
   { value: 'direct', label: 'HTTP / SOCKS5', hint: '单层代理或批量文本' },
   { value: 'chain', label: '链式代理', hint: '本机出口 + 落地代理' },
+  { value: 'webshare', label: 'Webshare API', hint: 'API key 批量导入' },
 ]
 
 export function ProxyPoolImportModal({
@@ -67,6 +82,8 @@ export function ProxyPoolImportModal({
   importDnsServers,
   importNamePrefix,
   importGroupName,
+  webshareApiKey,
+  fetchingWebshare,
   chainImportText,
   directImportText,
   chainImportForm,
@@ -74,6 +91,9 @@ export function ProxyPoolImportModal({
   fetchingImportUrl,
   fetchProxyOptions,
   canParseImport,
+  importSources, selectedImportSourceId, importSourceName, savingSource, loadingSources,
+  onSelectImportSource, onImportSourceNameChange, onSaveImportSource,
+  onForgetImportSource,
   onClose,
   onParse,
   onFetchImportUrl,
@@ -84,6 +104,8 @@ export function ProxyPoolImportModal({
   onImportDnsServersChange,
   onImportNamePrefixChange,
   onImportGroupNameChange,
+  onWebshareApiKeyChange,
+  onFetchWebshare,
   onChainImportTextChange,
   onDirectImportTextChange,
   onApplyChainJSON,
@@ -96,6 +118,7 @@ export function ProxyPoolImportModal({
   onCopyDirectTemplate,
   onDirectImportFormChange,
 }: ProxyPoolImportModalProps) {
+  const busy = fetchingImportUrl || fetchingWebshare || savingSource || loadingSources
   return (
     <Modal
       open={open}
@@ -104,41 +127,65 @@ export function ProxyPoolImportModal({
       width="720px"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={fetchingImportUrl}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button onClick={onParse} disabled={fetchingImportUrl || !canParseImport}>
+          <Button onClick={onParse} disabled={busy || importMode === 'webshare' || !canParseImport}>
             解析
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[var(--color-bg-secondary)] p-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-2xl bg-[var(--color-bg-secondary)] p-1">
           {importModeTabs.map(tab => {
             const active = importMode === tab.value
             return (
               <button
                 key={tab.value}
                 type="button"
+                disabled={busy}
                 onClick={() => onImportModeChange(tab.value)}
                 className={active
-                  ? 'rounded-xl bg-[var(--color-text-primary)] px-4 py-3 text-left text-white shadow-sm'
+                  ? 'rounded-xl bg-[var(--color-accent)] px-4 py-3 text-left text-[var(--color-text-inverse)] shadow-sm'
                   : 'rounded-xl px-4 py-3 text-left text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-primary)] hover:text-[var(--color-text-primary)]'
                 }
               >
                 <span className="block text-sm font-semibold">{tab.label}</span>
-                <span className={active ? 'mt-1 block text-xs text-white/75' : 'mt-1 block text-xs text-[var(--color-text-muted)]'}>{tab.hint}</span>
+                <span className={active ? 'mt-1 block text-xs opacity-75' : 'mt-1 block text-xs text-[var(--color-text-muted)]'}>{tab.hint}</span>
               </button>
             )
           })}
         </div>
 
+        {(importMode === 'clash' || importMode === 'webshare') && (
+          <div className="space-y-3">
+            <FormItem label="已保存的来源">
+              <Select value={selectedImportSourceId} onChange={event => onSelectImportSource(event.target.value)} disabled={busy}
+                options={[
+                  { value: '', label: loadingSources ? '正在读取来源…' : '新增来源' },
+                  ...(importSources || []).filter(source => source.kind === importMode).map(source => ({ value: source.id, label: source.name })),
+                ]} />
+            </FormItem>
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <FormItem label="来源名称（可选）">
+                  <Input value={importSourceName} onChange={event => onImportSourceNameChange(event.target.value)} placeholder={importMode === 'clash' ? '例如：美国订阅' : '例如：业务账号 A'} disabled={busy} maxLength={100} />
+                </FormItem>
+              </div>
+              <Button variant="secondary" onClick={onSaveImportSource} disabled={busy || !(importMode === 'clash' ? importUrl : webshareApiKey).trim()}>保存来源</Button>
+              {selectedImportSourceId && (
+                <Button variant="ghost" onClick={onForgetImportSource} disabled={busy} title="只删除保存的来源，保留已导入的代理">删除来源</Button>
+              )}
+            </div>
+          </div>
+        )}
         {importMode === 'clash' && (
           <>
-            <FormItem label="订阅 URL（可选）">
+            <FormItem label="订阅 URL（可选）" hint="获取成功后自动保存；可保存多个来源并随时切换">
               <div className="grid grid-cols-[minmax(0,1fr)_150px_auto] gap-2">
                 <Input
+                  disabled={busy}
                   value={importUrl}
                   onChange={(event) => onImportUrlChange(event.target.value)}
                   placeholder="订阅 URL"
@@ -147,7 +194,7 @@ export function ProxyPoolImportModal({
                 <Select
                   value={importFetchProxyId}
                   onChange={(event) => onImportFetchProxyIdChange(event.target.value)}
-                  disabled={fetchingImportUrl}
+                  disabled={busy}
                   options={[
                     { value: '', label: '直连拉取' },
                     ...fetchProxyOptions.map(proxy => ({
@@ -160,7 +207,7 @@ export function ProxyPoolImportModal({
                   variant="secondary"
                   onClick={onFetchImportUrl}
                   loading={fetchingImportUrl}
-                  disabled={!importUrl.trim()}
+                  disabled={busy || !importUrl.trim()}
                 >
                   从 URL 获取
                 </Button>
@@ -253,6 +300,26 @@ export function ProxyPoolImportModal({
                 留空则按上方表单导入；有内容则点击“解析”按文本直接导入，可批量。
               </p>
             </FormItem>
+          </div>
+        )}
+        {importMode === 'webshare' && (
+          <div className="space-y-4">
+            <FormItem label="Webshare API key" required hint="API key 仅保存在本机；可为不同账号分别命名保存">
+              <Input
+                type="password"
+                disabled={busy}
+                value={webshareApiKey}
+                onChange={(event) => onWebshareApiKeyChange(event.target.value)}
+                placeholder="粘贴 Webshare API key"
+                autoComplete="off"
+              />
+            </FormItem>
+            <div className="flex items-center justify-between rounded-lg bg-[var(--color-bg-secondary)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
+              <span>将导入 Webshare 账号中的 direct HTTP 代理，并进入预览确认。</span>
+              <Button variant="secondary" onClick={onFetchWebshare} loading={fetchingWebshare} disabled={busy || !webshareApiKey.trim()}>
+                获取代理
+              </Button>
+            </div>
           </div>
         )}
         {importMode === 'chain' && (

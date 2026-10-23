@@ -125,6 +125,10 @@ func (a *App) resolveBrowserStartProfile(input browserStartInput) (*BrowserProfi
 }
 
 func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserProfile) (*browserStartPlan, error) {
+	return a.prepareBrowserStartPlanWithTimezoneLookup(input, profile, resolveBrowserExitTimezone)
+}
+
+func (a *App) prepareBrowserStartPlanWithTimezoneLookup(input browserStartInput, profile *BrowserProfile, lookup func(string) (string, error)) (*browserStartPlan, error) {
 	bookmarks := a.BookmarkList()
 	sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, fingerprintLaunchArgs, chromeBinaryPath, userDataDir, err := a.prepareBrowserLaunchContext(input, profile, bookmarks)
 	if err != nil {
@@ -134,6 +138,23 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	effectiveProxy, acquiredProxyBridge, releaseProxyBridge, err := a.resolveBrowserStartProxy(input, profile)
 	if err != nil {
 		return nil, err
+	}
+
+	if a.config != nil && a.config.Browser.AutoTimezoneOnStart {
+		if strings.TrimSpace(effectiveProxy) == "" {
+			effectiveProxy = "direct://"
+		}
+		if err := a.updateBrowserStartTimezone(profile, effectiveProxy, lookup); err != nil {
+			if releaseProxyBridge {
+				a.releaseProxyBridgeRef(acquiredProxyBridge)
+			}
+			profile.LastError = err.Error()
+			return nil, err
+		}
+		// Per-launch arguments must not override the verified timezone.
+		sanitizedProfileLaunchArgs = withoutBrowserTimezoneArgs(sanitizedProfileLaunchArgs)
+		sanitizedExtraLaunchArgs = withoutBrowserTimezoneArgs(sanitizedExtraLaunchArgs)
+		fingerprintLaunchArgs = a.buildBrowserFingerprintCapabilityReport(input.ProfileID, profile.CoreId, profile.FingerprintArgs).LaunchArgs
 	}
 
 	startReadyTimeout, startStableWindow := a.browserStartTimingSettings()
@@ -166,6 +187,11 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		return nil, startErr
 	}
 
+	if _, err := os.Stat(filepath.Join(userDataDir, adsPowerPendingPath)); !os.IsNotExist(err) {
+		deferredStartTargets = append(deferredStartTargets, launchTargets...)
+		launchTargets = nil
+		restoreLastSession = false
+	}
 	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, launchTargets, restoreLastSession)
 	// 插件持久安装助手进程复用实例的调试端口与代理/指纹参数：
 	// 若此时实例浏览器尚未运行，安装助手进程就是实例浏览器本身，

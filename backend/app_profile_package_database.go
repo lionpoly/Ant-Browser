@@ -45,12 +45,13 @@ type ProfilePackageDatabaseGroup struct {
 }
 
 type ProfilePackageDatabaseCore struct {
-	CoreId    string `json:"coreId"`
-	CoreName  string `json:"coreName"`
-	CorePath  string `json:"corePath"`
-	IsDefault bool   `json:"isDefault"`
-	SortOrder int    `json:"sortOrder"`
-	CreatedAt string `json:"createdAt"`
+	FingerprintEngine string `json:"fingerprintEngine,omitempty"`
+	CoreId            string `json:"coreId"`
+	CoreName          string `json:"coreName"`
+	CorePath          string `json:"corePath"`
+	IsDefault         bool   `json:"isDefault"`
+	SortOrder         int    `json:"sortOrder"`
+	CreatedAt         string `json:"createdAt"`
 }
 
 type ProfilePackageDatabaseProxy struct {
@@ -296,9 +297,9 @@ func queryProfilePackageCores(conn *sql.DB, coreIDs []string) ([]ProfilePackageD
 		var core ProfilePackageDatabaseCore
 		var isDefault int
 		err := conn.QueryRow(`
-			SELECT core_id, core_name, core_path, is_default, sort_order, created_at
+			SELECT core_id, core_name, core_path, is_default, sort_order, created_at, fingerprint_engine
 			FROM browser_cores WHERE core_id = ?`, coreID).Scan(
-			&core.CoreId, &core.CoreName, &core.CorePath, &isDefault, &core.SortOrder, &core.CreatedAt,
+			&core.CoreId, &core.CoreName, &core.CorePath, &isDefault, &core.SortOrder, &core.CreatedAt, &core.FingerprintEngine,
 		)
 		if errors.Is(err, sql.ErrNoRows) {
 			warnings = append(warnings, fmt.Sprintf("实例关联的内核「%s」不存在，未导出该内核", coreID))
@@ -773,24 +774,27 @@ func profilePackageGroupNameKey(parentID, name string) string {
 }
 
 type profilePackageTargetCore struct {
-	ID   string
-	Path string
+	ID     string
+	Path   string
+	Name   string
+	Engine string
 }
 
 func (a *App) restoreProfilePackageCores(tx *sql.Tx, source []ProfilePackageDatabaseCore, warnings *[]string) (map[string]string, error) {
 	targetByID := make(map[string]profilePackageTargetCore)
 	targetByPath := make(map[string]string)
 	usedIDs := make(map[string]struct{})
-	rows, err := tx.Query(`SELECT core_id, core_path FROM browser_cores`)
+	rows, err := tx.Query(`SELECT core_id, core_path, core_name, fingerprint_engine FROM browser_cores`)
 	if err != nil {
 		return nil, fmt.Errorf("读取现有内核失败: %w", err)
 	}
 	for rows.Next() {
 		var item profilePackageTargetCore
-		if err := rows.Scan(&item.ID, &item.Path); err != nil {
+		if err := rows.Scan(&item.ID, &item.Path, &item.Name, &item.Engine); err != nil {
 			rows.Close()
 			return nil, err
 		}
+		item.Engine = browser.ResolveFingerprintEngine(browser.Core{CoreName: item.Name, CorePath: item.Path, FingerprintEngine: item.Engine})
 		key := backupImportIDKey(item.ID)
 		if key == "" {
 			continue
@@ -798,7 +802,7 @@ func (a *App) restoreProfilePackageCores(tx *sql.Tx, source []ProfilePackageData
 		targetByID[key] = item
 		usedIDs[key] = struct{}{}
 		if pathKey := backupImportPathKey(a, item.Path); pathKey != "" {
-			targetByPath[pathKey] = item.ID
+			targetByPath[pathKey+"\x00"+item.Engine] = item.ID
 		}
 	}
 	if err := rows.Close(); err != nil {
@@ -810,13 +814,17 @@ func (a *App) restoreProfilePackageCores(tx *sql.Tx, source []ProfilePackageData
 		if key == "" {
 			continue
 		}
+		if row.FingerprintEngine != "" && row.FingerprintEngine != "cloakbrowser" && row.FingerprintEngine != "fingerprint-chromium" {
+			return nil, fmt.Errorf("实例包的内核指纹引擎无效")
+		}
+		engine := browser.ResolveFingerprintEngine(browser.Core{CoreName: row.CoreName, CorePath: row.CorePath, FingerprintEngine: row.FingerprintEngine})
 		pathKey := backupImportPathKey(a, row.CorePath)
-		if existing, exists := targetByID[key]; exists && (pathKey == "" || pathKey == backupImportPathKey(a, existing.Path)) {
+		if existing, exists := targetByID[key]; exists && engine == existing.Engine && (pathKey == "" || pathKey == backupImportPathKey(a, existing.Path)) {
 			mappings[key] = existing.ID
 			continue
 		}
 		if pathKey != "" {
-			if existingID, exists := targetByPath[pathKey]; exists {
+			if existingID, exists := targetByPath[pathKey+"\x00"+engine]; exists {
 				mappings[key] = existingID
 				continue
 			}
@@ -835,13 +843,13 @@ func (a *App) restoreProfilePackageCores(tx *sql.Tx, source []ProfilePackageData
 			createdAt = time.Now().Format(time.RFC3339)
 		}
 		if _, err := tx.Exec(`
-			INSERT INTO browser_cores (core_id, core_name, core_path, is_default, sort_order, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)`, targetID, row.CoreName, row.CorePath, 0, row.SortOrder, createdAt); err != nil {
+			INSERT INTO browser_cores (core_id, core_name, core_path, is_default, sort_order, created_at, fingerprint_engine)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, targetID, row.CoreName, row.CorePath, 0, row.SortOrder, createdAt, row.FingerprintEngine); err != nil {
 			return nil, fmt.Errorf("恢复内核失败(%s): %w", row.CoreName, err)
 		}
-		targetByID[backupImportIDKey(targetID)] = profilePackageTargetCore{ID: targetID, Path: row.CorePath}
+		targetByID[backupImportIDKey(targetID)] = profilePackageTargetCore{ID: targetID, Path: row.CorePath, Name: row.CoreName, Engine: engine}
 		if pathKey != "" {
-			targetByPath[pathKey] = targetID
+			targetByPath[pathKey+"\x00"+engine] = targetID
 		}
 		mappings[key] = targetID
 		if filepath.IsAbs(strings.TrimSpace(row.CorePath)) {

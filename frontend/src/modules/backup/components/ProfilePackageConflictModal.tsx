@@ -119,6 +119,7 @@ export function ProfilePackageConflictModal({
     >
       {preview && (
         <div className="space-y-3 text-sm">
+ {(preview.warnings || []).map((warning, i) => <p key={i} className="text-xs text-[var(--color-warning)]">{warning}</p>)}
           <div className="flex flex-wrap items-center justify-between gap-2 text-[var(--color-text-secondary)]">
             <span>共 {preview.profileCount} 个实例，逐行选择处理方式。</span>
             <span>冲突 {preview.conflictCount} 个</span>

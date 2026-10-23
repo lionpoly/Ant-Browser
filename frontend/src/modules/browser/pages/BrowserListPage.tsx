@@ -4,6 +4,7 @@ import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfilePackageIm
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
 import { BatchToolbar } from '../components/BrowserListWidgets'
 import { BrowserProfilesPanel } from '../components/BrowserProfilesPanel'
+import { GroupManagerModal } from '../components/GroupManagerModal'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
 import { ProfileExtensionModal } from '../components/ProfileExtensionModal'
 import { createBrowserProfileCopyOptions, isBrowserProfileCopyOptionsValid } from '../copyOptions'
@@ -42,6 +43,7 @@ export function BrowserListPage() {
     setHeaderCollapsed,
   } = useBrowserListViewState()
 
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
   const [profilePackageBusy, setProfilePackageBusy] = useState(false)
@@ -131,6 +133,7 @@ export function BrowserListPage() {
     loading,
     proxies,
     groups,
+    updateGroupsState,
     startingIds,
     stoppingIds,
     setStartingIds,
@@ -312,6 +315,7 @@ export function BrowserListPage() {
     }
     setProfilePackageBusy(true)
     try {
+      toast.info('导出的实例包包含 Cookie、代理及导入时保留的账号信息，请妥善保管。')
       const result = await exportBrowserProfilePackage(ids)
       if (result.cancelled) return
       toast.success(`已导出 ${result.profileCount} 个实例`)
@@ -330,6 +334,7 @@ export function BrowserListPage() {
     }
     setProfilePackageBusy(true)
     try {
+      toast.info('导出的实例包包含 Cookie、代理及导入时保留的账号信息，请妥善保管。')
       const result = await exportBrowserProfilePackage([profile.profileId])
       if (result.cancelled) return
       toast.success(`已导出：${profile.profileName}`)
@@ -362,6 +367,7 @@ export function BrowserListPage() {
       return
     }
     setProfileImportPreview(null)
+    setProfilePackageBusy(true)
     try {
       const result = await importBrowserProfilePackageWithOptions(zipPath, 'new', confirmConflict, actions)
       if (result.cancelled) return
@@ -390,13 +396,13 @@ export function BrowserListPage() {
     try {
       const preview = await prepareBrowserProfilePackageImport()
       if (preview.cancelled) {
-        setProfilePackageBusy(false)
         return
       }
       setProfileImportPreview(preview)
       return
     } catch (error: any) {
       toast.error(error?.message || '导入实例失败')
+    } finally {
       setProfilePackageBusy(false)
     }
   }
@@ -560,12 +566,19 @@ export function BrowserListPage() {
         onFiltersChange={setFilters}
         onToggleHeaderCollapsed={() => setHeaderCollapsed((prev) => !prev)}
         onRefresh={() => { void loadProfiles() }}
+        onOpenGroups={() => setGroupManagerOpen(true)}
         onOpenSettings={handleOpenSettings}
         onOpenTrash={openTrashModal}
         onImportProfiles={handleImportProfiles}
         importingProfiles={profilePackageBusy}
         onViewModeChange={setViewMode}
       />
+
+      <GroupManagerModal open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} onChanged={(items, deleted) => {
+        updateGroupsState(items)
+        if (deleted && filters.groupId === deleted.groupId) setFilters({ ...filters, groupId: deleted.parentId || '' })
+        void loadProfiles().catch(() => toast.error('分组已更新，刷新实例列表失败，请重试'))
+      }} />
 
       {/* 批量操作工具栏 */}
       <BatchToolbar

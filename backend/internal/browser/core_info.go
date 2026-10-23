@@ -2,6 +2,7 @@ package browser
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,16 @@ func (m *Manager) GetChromeVersion(corePath string) string {
 	}
 
 	baseDir := m.ResolveRelativePath(corePath)
+	var release struct {
+		Version string `json:"version"`
+	}
+	if f, err := os.Open(filepath.Join(baseDir, ".ant-core-version.json")); err == nil {
+		b, readErr := io.ReadAll(io.LimitReader(f, 1025))
+		f.Close()
+		if readErr == nil && len(b) <= 1024 && json.Unmarshal(b, &release) == nil && cloakBrowserVersion.MatchString("chromium-v"+release.Version) {
+			return release.Version
+		}
+	}
 
 	// 尝试读取 manifest.json 或 *.manifest 文件
 	manifestPath := filepath.Join(baseDir, "manifest.json")

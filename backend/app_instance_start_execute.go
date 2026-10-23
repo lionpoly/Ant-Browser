@@ -74,7 +74,11 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 				a.bindProfileProxyBridge(input.ProfileID, plan.acquiredProxyBridge)
 				plan.releaseProxyBridge = false
 			}
-			if len(plan.deferredStartTargets) > 0 {
+			restoreErr := a.restoreAdsPowerSession(plan.userDataDir, stableDebugPort)
+			if restoreErr != nil {
+				profile.RuntimeWarning = restoreErr.Error()
+			}
+			if !adsPowerRestoreBlocksNavigation(restoreErr) && len(plan.deferredStartTargets) > 0 {
 				deferredPlan := deferredStartTargetsPlan{targets: plan.deferredStartTargets, newTabs: plan.deferredStartNewTabs}
 				if err := openDeferredStartTargets(stableDebugPort, deferredPlan); err != nil {
 					warning := deferredStartTargetsWarning(plan.deferredStartTargets, err)

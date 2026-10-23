@@ -3,8 +3,8 @@ import { Button, FormItem, Input, Modal, toast } from '../../../../shared/compon
 import { BrowserOpenURL } from '../../../../wailsjs/runtime/runtime'
 import type { BrowserProxy } from '../../types'
 import type { CoreDownloadForm, CoreDownloadProgress } from '../coreManagement.types'
-import { FINGERPRINT_CHROMIUM_RELEASES_URL } from './coreDownloadRecommendation'
-import type { CoreDownloadRecommendation } from './coreDownloadRecommendation'
+import { CORE_DOWNLOAD_SOURCES } from './coreDownloadRecommendation'
+import type { CoreDownloadRecommendation, CoreDownloadSource } from './coreDownloadRecommendation'
 
 interface CoreDownloadModalProps {
   open: boolean
@@ -16,6 +16,7 @@ interface CoreDownloadModalProps {
   proxies: BrowserProxy[]
   setForm: Dispatch<SetStateAction<CoreDownloadForm>>
   setProgress: Dispatch<SetStateAction<CoreDownloadProgress | null>>
+  onSourceChange: (source: CoreDownloadSource) => void
   onRefreshRecommendation: () => void
   onClose: () => void
   onStart: () => void
@@ -31,6 +32,7 @@ export function CoreDownloadModal({
   proxies,
   setForm,
   setProgress,
+  onSourceChange,
   onRefreshRecommendation,
   onClose,
   onStart,
@@ -61,11 +63,28 @@ export function CoreDownloadModal({
       }
     >
       <div className="space-y-4">
+        <FormItem label="内核来源">
+          <select
+            aria-label="内核来源"
+            value={form.source}
+            onChange={e => onSourceChange(e.target.value as CoreDownloadSource)}
+            disabled={progress !== null}
+            className="w-full h-9 px-3 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+          >
+            {Object.entries(CORE_DOWNLOAD_SOURCES).map(([value, source]) => (
+              <option key={value} value={value}>{source.label}</option>
+            ))}
+          </select>
+          {form.source === 'cloakbrowser' && (
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">推荐匹配当前平台的公开 Chromium 内核包；公开构建可能落后于当前 Chromium，请核对版本与发布时间。授权版本及指纹参数支持范围请查看上游说明。</p>
+          )}
+        </FormItem>
+
         <FormItem label="内核名称" required>
           <Input
             value={form.name}
             onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
-            placeholder={recommendation?.namePlaceholder || '例如: chrome-latest'}
+            placeholder={recommendation?.namePlaceholder || (form.source === 'cloakbrowser' ? '例如: cloakbrowser-latest' : '例如: chrome-latest')}
             disabled={progress !== null || isRedownload}
           />
           {!isRedownload && (
@@ -75,7 +94,7 @@ export function CoreDownloadModal({
 
         {isRedownload && (
           <div className="rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3 text-xs leading-5 text-[var(--color-warning)]">
-            重新下载会在校验新压缩包可用后替换当前内核目录；替换失败会自动恢复旧目录。正在使用该内核的实例请先停止。
+            请核对来源后点击“使用推荐”或自行填写地址。重新下载会在校验新压缩包可用后替换当前内核目录；替换失败会自动恢复旧目录。正在使用该内核的实例请先停止。
           </div>
         )}
 
@@ -106,7 +125,7 @@ export function CoreDownloadModal({
             )}
             <button
               type="button"
-              onClick={() => BrowserOpenURL(recommendation?.releasesUrl || FINGERPRINT_CHROMIUM_RELEASES_URL)}
+              onClick={() => BrowserOpenURL(recommendation?.releasesUrl || CORE_DOWNLOAD_SOURCES[form.source].releasesUrl)}
               className="shrink-0 text-[var(--color-accent)] hover:underline cursor-pointer font-medium"
             >
               打开 Releases
@@ -122,6 +141,12 @@ export function CoreDownloadModal({
             )}
           </div>
         </FormItem>
+
+        {recommendation && (
+          <p className="text-xs text-[var(--color-text-muted)]">
+            版本：{recommendation.releaseTag} · 发布：{recommendation.publishedAt.slice(0, 10) || '未知'}
+          </p>
+        )}
 
         <FormItem label="下载代理设置">
           <select

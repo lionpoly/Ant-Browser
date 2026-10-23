@@ -37,27 +37,39 @@ func (m *XrayManager) resolveBinary() (string, error) {
 	if goruntime.GOOS == "windows" {
 		binaryNames = []string{"xray.exe", "xray"}
 	}
-	platformDir := fmt.Sprintf("%s-%s", goruntime.GOOS, goruntime.GOARCH)
+	platformDirs := []string{fmt.Sprintf("%s-%s", goruntime.GOOS, goruntime.GOARCH)}
+	// macOS bundles may contain an Intel Xray binary while the app itself runs
+	// arm64 under Rosetta. Keep the native directory first, then try the
+	// compatible packaged directory.
+	if goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64" {
+		platformDirs = append(platformDirs, "darwin-amd64")
+	}
 
-	searchDirs := make([]string, 0, 4)
+	searchDirs := make([]string, 0, len(platformDirs)*4)
 	if m.AppRoot != "" {
-		searchDirs = append(searchDirs,
-			filepath.Join(m.AppRoot, "bin", platformDir),
-			filepath.Join(m.AppRoot, "bin"),
-		)
+		for _, platformDir := range platformDirs {
+			searchDirs = append(searchDirs,
+				filepath.Join(m.AppRoot, "bin", platformDir, "xray"),
+				filepath.Join(m.AppRoot, "bin", platformDir),
+			)
+		}
+		searchDirs = append(searchDirs, filepath.Join(m.AppRoot, "bin"))
 	}
 	if exePath, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exePath)
-		searchDirs = append(searchDirs,
-			filepath.Join(exeDir, "bin", platformDir),
-			filepath.Join(exeDir, "bin"),
-		)
+		for _, platformDir := range platformDirs {
+			searchDirs = append(searchDirs,
+				filepath.Join(exeDir, "bin", platformDir, "xray"),
+				filepath.Join(exeDir, "bin", platformDir),
+			)
+		}
+		searchDirs = append(searchDirs, filepath.Join(exeDir, "bin"))
 	}
 
 	for _, dir := range searchDirs {
 		for _, name := range binaryNames {
 			candidate := filepath.Join(dir, name)
-			if _, err := os.Stat(candidate); err == nil {
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 				if err := fsutil.EnsureExecutable(candidate); err != nil {
 					return "", fmt.Errorf("xray 文件不可执行: %s: %w", candidate, err)
 				}
@@ -75,5 +87,5 @@ func (m *XrayManager) resolveBinary() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("未找到 xray 可执行文件。请将 xray 放到 bin/%s/ 或 bin/ 目录，或在配置中设置 XrayBinaryPath", platformDir)
+	return "", fmt.Errorf("未找到 xray 可执行文件。请将 xray 放到 bin/%s/ 或 bin/ 目录，或在配置中设置 XrayBinaryPath", platformDirs[0])
 }

@@ -129,14 +129,20 @@ func cdpCall(debugPort int, method string, params map[string]any) (map[string]an
 	}
 
 	// 4. 等待响应
-	var cdpResp cdpResponse
-	if err := conn.ReadJSON(&cdpResp); err != nil {
-		return nil, fmt.Errorf("CDP 响应读取失败: %w", err)
+	for {
+		var cdpResp cdpResponse
+		if err := conn.ReadJSON(&cdpResp); err != nil {
+			return nil, fmt.Errorf("CDP 响应读取失败: %w", err)
+		}
+		if cdpResp.Id != msg.Id {
+			continue
+		}
+		if cdpResp.Error != nil {
+			return nil, fmt.Errorf("CDP 错误: %s", cdpResp.Error.Message)
+		}
+		return cdpResp.Result, nil
 	}
-	if cdpResp.Error != nil {
-		return nil, fmt.Errorf("CDP 错误: %s", cdpResp.Error.Message)
-	}
-	return cdpResp.Result, nil
+
 }
 
 func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
@@ -181,6 +187,9 @@ func cdpBrowserCall(debugPort int, method string, params map[string]any) error {
 
 // getDebugPort 获取运行中实例的调试端口
 func (a *App) getDebugPort(profileId string) (int, error) {
+	if a == nil || a.browserMgr == nil {
+		return 0, fmt.Errorf("浏览器管理器未初始化")
+	}
 	a.browserMgr.Mutex.Lock()
 	defer a.browserMgr.Mutex.Unlock()
 	profile, exists := a.browserMgr.Profiles[profileId]
@@ -256,8 +265,12 @@ func (a *App) BrowserExportCookies(profileId string) (string, error) {
 		if expires < 0 {
 			expires = 0
 		}
+		domain := c.Domain
+		if c.HttpOnly {
+			domain = "#HttpOnly_" + domain
+		}
 		sb.WriteString(fmt.Sprintf("%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
-			c.Domain, includeSubdomains, c.Path, secure, expires, c.Name, c.Value))
+			domain, includeSubdomains, c.Path, secure, expires, c.Name, c.Value))
 	}
 	return sb.String(), nil
 }

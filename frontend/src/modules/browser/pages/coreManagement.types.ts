@@ -1,3 +1,5 @@
+import type { CoreDownloadSource } from './coreManagement/coreDownloadRecommendation'
+
 export interface CoreDisplayInfo {
   coreId: string
   coreName: string
@@ -21,11 +23,13 @@ export interface CoreSettingsForm {
 }
 
 export interface CoreEditForm {
+  fingerprintEngine?: string
   coreName: string
   corePath: string
 }
 
 export interface CoreDownloadForm {
+  source: CoreDownloadSource
   coreId?: string
   name: string
   url: string

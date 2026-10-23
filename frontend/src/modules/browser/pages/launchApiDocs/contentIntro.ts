@@ -21,7 +21,7 @@
 
 - 批量导出：\`实例列表 -> 勾选实例 -> 导出\`
 - 单个导出：\`实例列表 -> 更多 -> 导出\`
-- 导入实例：\`实例列表 -> 导入实例 -> 选择 ZIP\`
+- 导入实例：\`实例列表 -> 导入实例 -> 选择 ZIP / AdsPower XLSX / TXT\`
 
 - 导出前先停止实例，避免浏览器数据文件被占用
 - 导出包包含实例配置和完整浏览器用户数据目录
@@ -240,16 +240,20 @@ chrome/
 
 \`\`\`text
 方式 A：应用内下载
-指纹浏览器 -> 内核管理 -> 下载内核
+指纹浏览器 -> 内核管理 -> 下载内核 -> 选择内核来源
 
 方式 B：手动下载
-下载 ZIP -> 解压到 chrome/<version>/ -> 回到内核管理确认识别
+下载 ZIP / TAR 系列压缩包 -> 解压到 chrome/<version>/ -> 回到内核管理确认识别
 \`\`\`
 
 ## 下载渠道
 
 - [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)
-- [Releases](https://github.com/adryfish/fingerprint-chromium/releases)
+- [fingerprint-chromium Releases](https://github.com/adryfish/fingerprint-chromium/releases)
+- [CloakBrowser](https://github.com/CloakHQ/cloakbrowser)
+- [CloakBrowser Releases](https://github.com/CloakHQ/cloakbrowser/releases)
+
+下载弹窗按系统和架构推荐公开内核包；CloakBrowser 会跳过 SDK、预发布及 Pro 发布。使用前请阅读 [Binary License](https://github.com/CloakHQ/cloakbrowser/blob/main/BINARY-LICENSE.md)，授权版本请按上游说明安装；指纹参数支持范围以所选内核的检测结果为准。
 
 ## 在应用里怎么用
 
@@ -273,7 +277,7 @@ chrome/
 ## 自检
 
 \`\`\`text
-1. 目录下能看到 chrome.exe
+1. 目录下能看到 chrome.exe（Windows）、chrome（Linux）或 Chromium.app（macOS）
 2. 内核管理页能识别到该目录
 3. 实例绑定的是正确版本
 \`\`\`

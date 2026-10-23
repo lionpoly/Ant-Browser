@@ -16,6 +16,7 @@ const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   defaultFingerprintArgs: [],
   defaultLaunchArgs: [],
   defaultStartUrls: [],
+  autoTimezoneOnStart: false,
   lightStartEnabled: true,
   restoreLastSession: false,
   startReadyTimeoutMs: 3000,

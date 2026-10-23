@@ -184,6 +184,8 @@ export function BrowserGetAllTags():Promise<Array<string>>;
 
 export function BrowserGetCookies(arg1:string):Promise<Array<backend.CookieInfo>>;
 
+export function BrowserImportCookies(arg1:string,arg2:string):Promise<number>;
+
 export function BrowserInstanceGetTabs(arg1:string):Promise<Array<browser.Tab>>;
 
 export function BrowserInstanceOpenFingerprintCheck(arg1:string):Promise<browser.Profile>;
@@ -276,9 +278,17 @@ export function BrowserProxyCoreOpenLocal(arg1:backend.ProxyCoreDownloadRequest)
 
 export function BrowserProxyCoreStatus(arg1:backend.ProxyCoreDownloadRequest):Promise<backend.ProxyCoreStatusResult>;
 
+export function BrowserProxyDeleteImportSource(arg1:string):Promise<void>;
+
 export function BrowserProxyFetchClashByURL(arg1:string):Promise<Record<string, any>>;
 
 export function BrowserProxyFetchClashByURLWithProxy(arg1:string,arg2:string):Promise<Record<string, any>>;
+
+export function BrowserProxyFetchWebshareProxies(arg1:string):Promise<Record<string, any>>;
+
+export function BrowserProxyGetImportPreferences():Promise<Record<string, string>>;
+
+export function BrowserProxyGetImportSources():Promise<backend.ProxyImportSources>;
 
 export function BrowserProxyList():Promise<Array<config.BrowserProxy>>;
 
@@ -289,6 +299,10 @@ export function BrowserProxyListGroups():Promise<Array<string>>;
 export function BrowserProxyProbeBrowserPage(arg1:backend.ProxyBrowserProbeRequest):Promise<backend.ProxyBrowserProbeResult>;
 
 export function BrowserProxyResolveLocation(arg1:string):Promise<backend.ProxyLocationResolveResult>;
+
+export function BrowserProxySaveImportPreference(arg1:string,arg2:string):Promise<void>;
+
+export function BrowserProxySaveImportSource(arg1:string,arg2:string,arg3:string,arg4:string):Promise<backend.ProxyImportSource>;
 
 export function BrowserProxyTestSpeed(arg1:string):Promise<backend.ProxyTestResult>;
 

@@ -177,6 +177,7 @@ type BrowserBookmark struct {
 }
 
 type BrowserConfig struct {
+	AutoTimezoneOnStart    bool                   `yaml:"auto_timezone_on_start"`
 	UserDataRoot           string                 `yaml:"user_data_root"`
 	DefaultFingerprintArgs []string               `yaml:"default_fingerprint_args"`
 	DefaultLaunchArgs      []string               `yaml:"default_launch_args"`
@@ -200,10 +201,11 @@ type BrowserConfig struct {
 }
 
 type BrowserCore struct {
-	CoreId    string `yaml:"core_id" json:"coreId"`
-	CoreName  string `yaml:"core_name" json:"coreName"`
-	CorePath  string `yaml:"core_path" json:"corePath"`
-	IsDefault bool   `yaml:"is_default" json:"isDefault"`
+	FingerprintEngine string `yaml:"fingerprint_engine,omitempty" json:"fingerprintEngine,omitempty"`
+	CoreId            string `yaml:"core_id" json:"coreId"`
+	CoreName          string `yaml:"core_name" json:"coreName"`
+	CorePath          string `yaml:"core_path" json:"corePath"`
+	IsDefault         bool   `yaml:"is_default" json:"isDefault"`
 }
 
 type BrowserProxy struct {

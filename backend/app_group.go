@@ -54,7 +54,7 @@ func (a *App) ListGroups() []BrowserGroupWithCount {
 // CreateGroup 创建分组
 func (a *App) CreateGroup(input BrowserGroupInput) (*BrowserGroup, error) {
 	log := logger.New("Group")
-	if a.browserMgr.GroupDAO == nil {
+	if a == nil || a.browserMgr == nil || a.browserMgr.GroupDAO == nil {
 		return nil, fmt.Errorf("GroupDAO 未初始化")
 	}
 
@@ -70,7 +70,7 @@ func (a *App) CreateGroup(input BrowserGroupInput) (*BrowserGroup, error) {
 // UpdateGroup 更新分组
 func (a *App) UpdateGroup(groupId string, input BrowserGroupInput) (*BrowserGroup, error) {
 	log := logger.New("Group")
-	if a.browserMgr.GroupDAO == nil {
+	if a == nil || a.browserMgr == nil || a.browserMgr.GroupDAO == nil {
 		return nil, fmt.Errorf("GroupDAO 未初始化")
 	}
 
@@ -86,13 +86,25 @@ func (a *App) UpdateGroup(groupId string, input BrowserGroupInput) (*BrowserGrou
 // DeleteGroup 删除分组
 func (a *App) DeleteGroup(groupId string) error {
 	log := logger.New("Group")
-	if a.browserMgr.GroupDAO == nil {
+	if a == nil || a.browserMgr == nil || a.browserMgr.GroupDAO == nil {
 		return fmt.Errorf("GroupDAO 未初始化")
 	}
 
+	a.browserMgr.Mutex.Lock()
+	defer a.browserMgr.Mutex.Unlock()
+	group, err := a.browserMgr.GroupDAO.GetById(groupId)
+	if err != nil {
+		return err
+	}
 	if err := a.browserMgr.GroupDAO.Delete(groupId); err != nil {
 		log.Error("删除分组失败", logger.F("group_id", groupId), logger.F("error", err))
 		return err
+	}
+	// Keep live profiles in sync so later SaveProfiles cannot restore deleted IDs.
+	for _, profile := range a.browserMgr.Profiles {
+		if profile.GroupId == groupId {
+			profile.GroupId = group.ParentId
+		}
 	}
 	log.Info("分组已删除", logger.F("group_id", groupId))
 	return nil

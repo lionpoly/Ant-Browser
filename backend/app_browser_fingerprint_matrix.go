@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -138,7 +139,13 @@ func (a *App) buildBrowserFingerprintCapabilityReport(profileId string, coreId s
 		chromeVersion = a.browserMgr.GetChromeVersion(core.CorePath)
 	}
 
-	plan := buildBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	var plan browserFingerprintLaunchPlan
+	cloak := coreFound && browser.ResolveFingerprintEngine(core) == "cloakbrowser"
+	if cloak {
+		plan = buildCloakBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	} else {
+		plan = buildBrowserFingerprintLaunchPlan(profileId, fingerprintArgs, chromeVersion)
+	}
 	report := BrowserFingerprintCapabilityReport{
 		ProfileId:     profileId,
 		ChromeVersion: chromeVersion,
@@ -148,6 +155,9 @@ func (a *App) buildBrowserFingerprintCapabilityReport(profileId string, coreId s
 		LaunchArgs:    append([]string{}, plan.launchArgs...),
 		Rows:          append([]BrowserFingerprintCapabilityRow{}, plan.rows...),
 		Warnings:      append([]string{}, plan.warnings...),
+	}
+	if cloak {
+		report.VersionStatus = "cloakbrowser"
 	}
 	if coreFound {
 		report.CoreId = core.CoreId

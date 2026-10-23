@@ -136,25 +136,27 @@ func (d *SQLiteGroupDAO) Update(groupId string, input GroupInput) (*Group, error
 
 // Delete 删除分组（级联处理：子分组和实例移动到父分组）
 func (d *SQLiteGroupDAO) Delete(groupId string) error {
-	group, err := d.GetById(groupId)
+	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
-	// 将子分组移动到父分组
-	if err := d.MoveChildren(groupId, group.ParentId); err != nil {
-		return err
-	}
-	// 将该分组下的实例移动到父分组
-	_, err = d.db.Exec(`UPDATE browser_profiles SET group_id = ? WHERE group_id = ?`, group.ParentId, groupId)
+	defer tx.Rollback()
+	group, err := scanGroup(tx.QueryRow(`SELECT group_id, group_name, parent_id, sort_order, created_at, updated_at FROM browser_groups WHERE group_id = ?`, groupId))
 	if err != nil {
-		return fmt.Errorf("移动实例失败: %w", err)
+		return fmt.Errorf("分组不存在: %w", err)
 	}
-	// 删除分组
-	_, err = d.db.Exec(`DELETE FROM browser_groups WHERE group_id = ?`, groupId)
-	if err != nil {
+	for _, query := range []string{
+		`UPDATE browser_groups SET parent_id = ? WHERE parent_id = ?`,
+		`UPDATE browser_profiles SET group_id = ? WHERE group_id = ?`,
+	} {
+		if _, err := tx.Exec(query, group.ParentId, groupId); err != nil {
+			return fmt.Errorf("移动分组内容失败: %w", err)
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM browser_groups WHERE group_id = ?`, groupId); err != nil {
 		return fmt.Errorf("删除分组失败: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // GetChildren 获取子分组

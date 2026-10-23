@@ -14,7 +14,12 @@ import (
 )
 
 func (a *App) GetBrowserSettings() BrowserSettings {
+	if a.browserMgr != nil {
+		a.browserMgr.Mutex.Lock()
+		defer a.browserMgr.Mutex.Unlock()
+	}
 	return BrowserSettings{
+		AutoTimezoneOnStart:    a.config.Browser.AutoTimezoneOnStart,
 		UserDataRoot:           a.config.Browser.UserDataRoot,
 		DefaultFingerprintArgs: append([]string{}, a.config.Browser.DefaultFingerprintArgs...),
 		DefaultLaunchArgs:      append([]string{}, a.config.Browser.DefaultLaunchArgs...),
@@ -28,7 +33,12 @@ func (a *App) GetBrowserSettings() BrowserSettings {
 }
 
 func (a *App) SaveBrowserSettings(settings BrowserSettings) error {
+	if a.browserMgr != nil {
+		a.browserMgr.Mutex.Lock()
+		defer a.browserMgr.Mutex.Unlock()
+	}
 	log := logger.New("Browser")
+	a.config.Browser.AutoTimezoneOnStart = settings.AutoTimezoneOnStart
 	a.config.Browser.UserDataRoot = strings.TrimSpace(settings.UserDataRoot)
 	a.config.Browser.DefaultFingerprintArgs = append([]string{}, settings.DefaultFingerprintArgs...)
 	a.config.Browser.DefaultLaunchArgs = append([]string{}, settings.DefaultLaunchArgs...)

@@ -47,6 +47,13 @@ export function CoreEditModal({
             placeholder="例如：Chrome 142"
           />
         </FormItem>
+        <FormItem label="指纹参数引擎">
+          <select aria-label="指纹参数引擎" className="w-full h-9 rounded-md border px-3" value={form.fingerprintEngine || ''} onChange={e => setForm(prev => ({...prev, fingerprintEngine:e.target.value}))}>
+            <option value="">自动识别（名称或路径）</option>
+            <option value="fingerprint-chromium">fingerprint-chromium</option>
+            <option value="cloakbrowser">CloakBrowser</option>
+          </select>
+        </FormItem>
         <FormItem label="内核路径" required>
           <Input
             value={form.corePath}

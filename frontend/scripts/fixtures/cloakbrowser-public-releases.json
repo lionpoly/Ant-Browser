@@ -1,0 +1,42 @@
+[
+  {
+    "tag_name": "chromium-v146.0.7680.177.5",
+    "published_at": "2026-05-21T03:15:08Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "cloakbrowser-linux-x64.tar.gz",
+        "browser_download_url": "https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v146.0.7680.177.5/cloakbrowser-linux-x64.tar.gz"
+      },
+      {
+        "name": "cloakbrowser-windows-x64.zip",
+        "browser_download_url": "https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v146.0.7680.177.5/cloakbrowser-windows-x64.zip"
+      }
+    ]
+  },
+  {
+    "tag_name": "chromium-v145.0.7632.109.2",
+    "published_at": "2026-03-04T00:09:02Z",
+    "draft": false,
+    "prerelease": false,
+    "assets": [
+      {
+        "name": "cloakbrowser-darwin-arm64.tar.gz",
+        "browser_download_url": "https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.109.2/cloakbrowser-darwin-arm64.tar.gz"
+      },
+      {
+        "name": "cloakbrowser-darwin-x64.tar.gz",
+        "browser_download_url": "https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.109.2/cloakbrowser-darwin-x64.tar.gz"
+      },
+      {
+        "name": "cloakbrowser-linux-x64.tar.gz",
+        "browser_download_url": "https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.109.2/cloakbrowser-linux-x64.tar.gz"
+      },
+      {
+        "name": "cloakbrowser-windows-x64.zip",
+        "browser_download_url": "https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.109.2/cloakbrowser-windows-x64.zip"
+      }
+    ]
+  }
+]

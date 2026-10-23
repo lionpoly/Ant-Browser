@@ -222,9 +222,26 @@ func (a *App) finalizeDeferredStartTargetsForMonitor(profileId string, debugPort
 	if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
 		return nil, false
 	}
+	a.browserMgr.Mutex.Lock()
+	profile := a.browserMgr.Profiles[profileId]
+	dir := ""
+	if profile != nil {
+		dir = a.browserMgr.ResolveUserDataDir(profile)
+	}
+	a.browserMgr.Mutex.Unlock()
+	var restoreWarning *BrowserProfile
+	var restoreChanged bool
+	if dir != "" {
+		if err := a.restoreAdsPowerSession(dir, debugPort); err != nil {
+			restoreWarning, restoreChanged = a.setProfileRuntimeWarningForMonitor(profileId, debugPort, err.Error(), monitor)
+			if adsPowerRestoreBlocksNavigation(err) {
+				return restoreWarning, restoreChanged
+			}
+		}
+	}
 	plan := a.consumeDeferredStartTargets(profileId)
 	if len(plan.targets) == 0 {
-		return nil, false
+		return restoreWarning, restoreChanged
 	}
 	if !a.browserProcessMonitorIsCurrent(profileId, monitor) {
 		return nil, false
@@ -243,5 +260,5 @@ func (a *App) finalizeDeferredStartTargetsForMonitor(profileId string, debugPort
 		return snapshot, changed
 	}
 
-	return nil, false
+	return restoreWarning, restoreChanged
 }

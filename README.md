@@ -10,15 +10,24 @@
 
 ## 推荐内核项目
 
-Ant Browser 当前推荐配套使用的浏览器内核，来源于开源项目 [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)。
+Ant Browser 支持在「指纹浏览器 → 内核管理 → 下载内核」中选择两种内核来源：
 
-如果你正在寻找可直接下载和维护的指纹内核版本，建议先查看它的 Releases 页面：
+- [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium)：保留现有默认来源，按当前系统和架构推荐 Release 压缩包。
+- [CloakBrowser](https://github.com/CloakHQ/cloakbrowser)：按当前系统和架构查找可直接下载的公开 Chromium 内核包，跳过 SDK、预发布及 Pro 发布。Windows 支持 x64，Linux 和 macOS 支持 x64 / ARM64，具体可用版本以公开发布为准。使用前请阅读上游的 [Binary License](https://github.com/CloakHQ/cloakbrowser/blob/main/BINARY-LICENSE.md)。
 
-- <https://github.com/adryfish/fingerprint-chromium/releases>
+选择来源后可使用推荐地址，也可自行填写压缩包地址；下载代理、导入本地包、设为默认和实例选择沿用现有流程。CloakBrowser 的授权版本及 SDK 功能请按上游说明使用；不同内核的指纹参数支持范围以实际检测结果为准。
 
-这个项目为 Ant Browser 的内核准备提供了直接可用的基础来源，这里先对原项目做明确推荐与致谢。
+CloakBrowser 官方 GitHub 下载会在解压前验证同一发布的 Ed25519 签名清单及文件 SHA-256；校验失败会终止安装。公开构建可能落后于当前 Chromium，请核对弹窗中的版本和发布时间。重新下载已有内核时，需要显式使用推荐地址或填写下载地址。
+
+感谢两个上游项目提供浏览器内核。
 
 Ant Browser 的目标很明确：在一台桌面设备上，帮助用户稳定管理多个彼此隔离的浏览器实例，并配合代理池、浏览器内核和快捷启动能力完成日常运营或测试工作。
+
+### AdsPower 实例导入
+
+在「实例列表 → 导入实例」选择 AdsPower 导出的 `.txt` 或 `.xlsx`，确认每行的新建、重命名或覆盖操作。支持名称、分组、标签、认证 HTTP/HTTPS/SOCKS5 代理、UA、窗口分辨率、Cookie 和启动标签页。首次启动先恢复 Cookie，再打开导入标签页；恢复失败会提示并保留数据以便下次启动重试。
+
+账号、密码、备注及其他源字段保存在实例用户目录的 `.ant-import/adspower.json`，在 macOS/Linux 上以 0600 权限保存；Windows 使用当前用户数据目录的系统访问控制。它包含敏感信息，导出实例包时也会随包保留，请妥善保管。此导出格式不包含完整浏览器目录或 AdsPower 专有指纹；网站也可能要求重新登录。若 XLSX 提示 Cookie 超出单元格上限，请使用 TXT 导出，无法从该 XLSX 恢复缺失的 Cookie。
 
 ## 目录
 

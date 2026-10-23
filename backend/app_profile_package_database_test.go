@@ -435,3 +435,27 @@ func assertProfilePackageDatabaseContents(t *testing.T, zipPath, profileID, grou
 		t.Fatalf("database snapshot references are incomplete: %#v", snapshot)
 	}
 }
+
+func TestProfilePackageCoreEngineConflict(t *testing.T) {
+	root := t.TempDir()
+	db := newProfilePackageDatabase(t, root)
+	app := NewApp(root)
+	db.GetConn().Exec(`INSERT INTO browser_cores(core_id,core_name,core_path,fingerprint_engine) VALUES('same','custom','/same-core','fingerprint-chromium')`)
+	tx, err := db.GetConn().Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	warnings := []string{}
+	mappings, err := app.restoreProfilePackageCores(tx, []ProfilePackageDatabaseCore{{CoreId: "same", CoreName: "custom cloak", CorePath: "/same-core", FingerprintEngine: "cloakbrowser"}}, &warnings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mappings["same"] == "same" {
+		t.Fatal("different engine silently reused")
+	}
+	var engine string
+	if err = tx.QueryRow(`SELECT fingerprint_engine FROM browser_cores WHERE core_id=?`, mappings["same"]).Scan(&engine); err != nil || engine != "cloakbrowser" {
+		t.Fatal("source engine lost")
+	}
+}

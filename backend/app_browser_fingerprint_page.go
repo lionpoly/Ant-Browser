@@ -253,15 +253,22 @@ func (a *App) buildFingerprintCheckPageContext(profileId string) ([]byte, error)
 func (a *App) buildFingerprintCheckPageContextForProfile(profileId string, coreId string, fingerprintArgs []string) ([]byte, error) {
 	expectedArgs := a.buildFingerprintCheckExpectedArgs(profileId, coreId, fingerprintArgs, nil)
 	profile, _ := a.fingerprintCheckProfileSnapshot(profileId)
-	return a.buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId, expectedArgs, profile)
+	return a.buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId, expectedArgs, profile, coreId)
 }
 
 func (a *App) buildFingerprintCheckPageContextForExpectedArgs(profileId string, expectedArgs []string) ([]byte, error) {
 	return a.buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId, expectedArgs, nil)
 }
 
-func (a *App) buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId string, expectedArgs []string, profile *BrowserProfile) ([]byte, error) {
-	expected := buildBrowserFingerprintExpected(expectedArgs)
+func (a *App) buildFingerprintCheckPageContextForExpectedArgsAndProfile(profileId string, expectedArgs []string, profile *BrowserProfile, coreIDs ...string) ([]byte, error) {
+	coreID := ""
+	if profile != nil {
+		coreID = profile.CoreId
+	}
+	if len(coreIDs) > 0 {
+		coreID = coreIDs[0]
+	}
+	expected := a.browserFingerprintExpectedForCore(expectedArgs, coreID)
 	data, err := json.MarshalIndent(fingerprintCheckPageContext{
 		ProfileId:  profileId,
 		Expected:   expected,

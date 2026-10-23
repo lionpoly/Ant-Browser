@@ -259,6 +259,7 @@ var migrations = []migration{
 			`UPDATE browser_extensions SET default_install = 0`,
 		},
 	},
+	{version: 18, desc: "内核指纹参数引擎", stmts: []string{`ALTER TABLE browser_cores ADD COLUMN fingerprint_engine TEXT NOT NULL DEFAULT ''`}},
 	// ── 新版本在此追加，格式：
 	// {
 	//     version: 4,

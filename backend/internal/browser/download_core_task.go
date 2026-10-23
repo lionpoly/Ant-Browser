@@ -21,10 +21,11 @@ func (m *Manager) DownloadAndExtractCore(ctx context.Context, coreName string, t
 	for _, core := range m.ListCores() {
 		if strings.EqualFold(core.CoreName, coreName) || filepath.Base(core.CorePath) == coreName {
 			m.downloadAndExtractCore(ctx, CoreInput{
-				CoreId:    core.CoreId,
-				CoreName:  core.CoreName,
-				CorePath:  core.CorePath,
-				IsDefault: core.IsDefault,
+				CoreId:            core.CoreId,
+				FingerprintEngine: core.FingerprintEngine,
+				CoreName:          core.CoreName,
+				CorePath:          core.CorePath,
+				IsDefault:         core.IsDefault,
 			}, targetUrl, proxyConfig, false)
 			return
 		}
@@ -40,10 +41,11 @@ func (m *Manager) RedownloadCore(ctx context.Context, coreId string, targetUrl s
 		return
 	}
 	m.downloadAndExtractCore(ctx, CoreInput{
-		CoreId:    core.CoreId,
-		CoreName:  core.CoreName,
-		CorePath:  core.CorePath,
-		IsDefault: core.IsDefault,
+		CoreId:            core.CoreId,
+		FingerprintEngine: core.FingerprintEngine,
+		CoreName:          core.CoreName,
+		CorePath:          core.CorePath,
+		IsDefault:         core.IsDefault,
 	}, targetUrl, proxyConfig, true)
 }
 
@@ -161,6 +163,11 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 	}
 
 	tempFile.Close() // 解压前先关闭写句柄
+	sendEvent("verifying", 0, "正在校验内核安装包...")
+	if err := verifyCloakBrowserArchive(ctx, client, targetUrl, tempFilePath); err != nil {
+		sendEvent("error", 0, "内核完整性校验失败: "+err.Error())
+		return
+	}
 	sendEvent("extracting", 0, "下载完成，正在准备解压文件...")
 	log.Info("内核下载完成", logger.F("url", targetUrl), logger.F("temp", tempFilePath), logger.F("cost", time.Since(t).String()))
 
@@ -192,17 +199,32 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 		return
 	}
 
+	if err := writeCloakDownloadedVersion(tempExtractDir, targetUrl); err != nil {
+		sendEvent("error", 0, "保存内核版本信息失败")
+		return
+	}
 	if err := replaceCoreDirectory(targetDir, tempExtractDir, replaceExisting); err != nil {
 		sendEvent("error", 0, "替换内核目录失败: "+err.Error())
 		return
 	}
 	cleanupTempExtract = false
 
+	engine := coreInput.FingerprintEngine
+	if u, err := url.Parse(targetUrl); err == nil && strings.EqualFold(u.Hostname(), "github.com") {
+		path := strings.ToLower(u.Path)
+		if strings.HasPrefix(path, "/cloakhq/cloakbrowser/releases/download/") {
+			engine = "cloakbrowser"
+		}
+		if strings.HasPrefix(path, "/adryfish/fingerprint-chromium/releases/download/") {
+			engine = "fingerprint-chromium"
+		}
+	}
 	coreToSave := CoreInput{
-		CoreId:    strings.TrimSpace(coreInput.CoreId),
-		CoreName:  coreName,
-		CorePath:  targetCorePath,
-		IsDefault: coreInput.IsDefault,
+		FingerprintEngine: engine,
+		CoreId:            strings.TrimSpace(coreInput.CoreId),
+		CoreName:          coreName,
+		CorePath:          targetCorePath,
+		IsDefault:         coreInput.IsDefault,
 	}
 	if coreToSave.CoreId == "" {
 		coreToSave.CoreId = uuid.NewString()

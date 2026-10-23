@@ -214,6 +214,7 @@ export function useBrowserListData({ loadCores }: UseBrowserListDataOptions) {
     loading,
     proxies,
     groups,
+    updateGroupsState: setGroups,
     startingIds,
     stoppingIds,
     setStartingIds,

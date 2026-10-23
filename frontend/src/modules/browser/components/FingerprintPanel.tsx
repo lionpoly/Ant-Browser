@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, HelpCircle, RefreshCw } from 'lucide-react'
 import { Button, ConfirmModal, FormItem, Input, Modal, Select, Switch, Textarea } from '../../../shared/components'
 import {
   type FingerprintConfig,
+  type FingerprintEngine,
   FINGERPRINT_PRESETS,
   PRESET_RESOLUTIONS,
   buildAcceptLanguage,
@@ -16,6 +17,7 @@ import {
 import { FINGERPRINT_CAPABILITIES, FINGERPRINT_PERSONAS, capabilityModeLabel } from '../utils/fingerprintCapabilities'
 
 interface FingerprintPanelProps {
+  engine?: FingerprintEngine
   value: string[]
   onChange: (args: string[]) => void
 }
@@ -129,6 +131,59 @@ const NOISE_OPTIONS = [
   { value: '1', label: '显式开启' },
 ]
 
+const CLOAK_GPU_OPTIONS = [
+  { value: '', label: '使用种子默认' },
+  { value: 'Intel', label: 'Intel' },
+  { value: 'NVIDIA', label: 'NVIDIA' },
+]
+
+const CLOAK_SCREEN_PRESETS = [
+  ['1280', '720'], ['1280', '800'], ['1366', '768'], ['1440', '900'],
+  ['1536', '864'], ['1600', '900'], ['1920', '1080'], ['1920', '1200'],
+  ['2560', '1440'], ['2560', '1600'], ['3440', '1440'], ['3840', '2160'],
+] as const
+
+const CLOAK_EDITABLE_FIELDS = [
+  {
+    field: 'deviceMemory', label: '设备内存（GB）', placeholder: '使用种子默认，可输入自定义 GB',
+    options: ['0.5', '1', '2', '4', '8', '16', '32', '64'].map(value => ({ value, label: `${value} GB` })),
+    hint: '选择常见容量或手动输入；页面可见值由内核决定。',
+  },
+  {
+    field: 'screenWidth', label: '屏幕宽度（px）', placeholder: '使用种子默认，可输入自定义宽度',
+    options: [...new Set(CLOAK_SCREEN_PRESETS.map(([width]) => width))].map(value => ({ value, label: `${value} px` })),
+  },
+  {
+    field: 'screenHeight', label: '屏幕高度（px）', placeholder: '使用种子默认，可输入自定义高度',
+    options: [...new Set(CLOAK_SCREEN_PRESETS.map(([, height]) => height))].map(value => ({ value, label: `${value} px` })),
+  },
+  {
+    field: 'storageQuota', label: '存储配额（MB）', placeholder: '使用种子默认，可输入自定义 MB',
+    options: ['1024', '5120', '10240', '51200', '102400', '512000'].map(value => ({ value, label: `${Number(value).toLocaleString('en-US')} MB` })),
+  },
+  {
+    field: 'taskbarHeight', label: '任务栏高度（px）', placeholder: '使用平台默认，可输入自定义高度',
+    options: [
+      { value: '0', label: '0 px（Linux 默认 / 无任务栏）' },
+      { value: '40', label: '40 px' },
+      { value: '48', label: '48 px（Windows 默认）' },
+      { value: '64', label: '64 px' },
+      { value: '95', label: '95 px（macOS 默认）' },
+    ],
+  },
+  {
+    field: 'webrtcIP', label: 'WebRTC IP', placeholder: '输入自定义 IPv4 / IPv6，或选择 auto',
+    options: [{ value: 'auto', label: 'auto（通过代理查询出口 IP）' }],
+    hint: 'auto 会发起出口 IP 查询；显式 IP 应与实际代理出口一致。',
+  },
+] satisfies {
+  field: keyof FingerprintConfig
+  label: string
+  placeholder: string
+  options: { value: string; label: string }[]
+  hint?: string
+}[]
+
 const SPOOFING_OPTIONS = [
   { value: 'font', label: '字体' },
   { value: 'audio', label: '音频' },
@@ -170,6 +225,7 @@ interface EditableOptionInputProps {
   onChange: (value: string) => void
   options: { value: string; label: string }[]
   placeholder?: string
+  label?: string
 }
 
 interface FingerprintSectionProps {
@@ -186,12 +242,13 @@ function FingerprintSection({ title, children }: FingerprintSectionProps) {
   )
 }
 
-function EditableOptionInput({ value, onChange, options, placeholder }: EditableOptionInputProps) {
+function EditableOptionInput({ value, onChange, options, placeholder, label }: EditableOptionInputProps) {
   const [open, setOpen] = useState(false)
 
   return (
     <div className="relative">
       <Input
+        aria-label={label}
         value={value}
         onChange={e => onChange(e.target.value)}
         onFocus={() => setOpen(true)}
@@ -201,6 +258,8 @@ function EditableOptionInput({ value, onChange, options, placeholder }: Editable
       />
       <button
         type="button"
+        aria-label={label ? `选择${label}预设` : '选择常用预设'}
+        aria-expanded={open}
         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
         onMouseDown={e => e.preventDefault()}
         onClick={() => setOpen(current => !current)}
@@ -229,7 +288,7 @@ function EditableOptionInput({ value, onChange, options, placeholder }: Editable
   )
 }
 
-export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
+export function FingerprintPanel({ value, onChange, engine = 'fingerprint-chromium' }: FingerprintPanelProps) {
   const [config, setConfig] = useState<FingerprintConfig>(() => deserialize(value))
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [advancedHelpOpen, setAdvancedHelpOpen] = useState(false)
@@ -243,7 +302,7 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
   const update = (patch: Partial<FingerprintConfig>) => {
     const next = { ...config, ...patch }
     setConfig(next)
-    onChange(serialize(next))
+    onChange(serialize(next, engine))
   }
 
   const handlePresetChange = (presetId: string) => {
@@ -256,14 +315,14 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
       unknownArgs: config.unknownArgs,
     }
     setConfig(next)
-    onChange(serialize(next))
+    onChange(serialize(next, engine))
   }
 
   const handleAdvancedChange = (text: string) => {
     const args = text.split('\n').map(s => s.trim()).filter(Boolean)
     const parsed = deserialize(args)
     setConfig(parsed)
-    onChange(serialize(parsed))
+    onChange(serialize(parsed, engine))
   }
 
   const handlePersonaChange = (personaId: string) => {
@@ -275,7 +334,7 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
       unknownArgs: config.unknownArgs,
     }
     setConfig(next)
-    onChange(serialize(next))
+    onChange(serialize(next, engine))
   }
 
   const toggleDisableSpoofing = (key: string, checked: boolean) => {
@@ -284,8 +343,8 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
     update({ disableSpoofing: next.length ? next : undefined })
   }
 
-  const advancedText = serialize(config).join('\n')
-  const validation = validateFingerprintArgs(value)
+  const advancedText = serialize(config, engine).join('\n')
+  const validation = validateFingerprintArgs(value, engine)
   const validationTone = validation.issues.some(issue => issue.level === 'error')
     ? 'border-red-200 bg-red-50 text-red-700'
     : validation.issues.some(issue => issue.level === 'warning')
@@ -346,7 +405,7 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
             <div>模式</div>
             <div>覆盖</div>
           </div>
-          {FINGERPRINT_CAPABILITIES.map(item => (
+          {(engine === 'cloakbrowser' ? CLOAK_CAPABILITIES : FINGERPRINT_CAPABILITIES).map(item => (
             <div key={item.id} className="grid grid-cols-[120px_96px_minmax(0,1fr)] gap-3 px-3 py-2 text-xs border-b last:border-b-0 border-[var(--color-border)]">
               <div className="font-medium text-[var(--color-text-primary)]">{item.name}</div>
               <div className="text-[var(--color-text-secondary)]">{capabilityModeLabel(item.mode)}</div>
@@ -445,7 +504,41 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
         </div>
       </FingerprintSection>
 
-      <FingerprintSection title="兼容伪装">
+      {engine === 'cloakbrowser' && <FingerprintSection title="CloakBrowser 原生参数">
+        <p className="text-xs text-[var(--color-text-muted)]">可选择常用预设或直接输入自定义值；清空后使用内核默认。原生参数仍按所选内核版本检查。</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormItem label="GPU 家族" hint="当前内核支持 Intel / NVIDIA；留空由种子选择。">
+            <Select aria-label="GPU 家族" value={config.gpuVendor ?? ''} onChange={e => update({ gpuVendor: e.target.value || undefined })} options={[
+              ...CLOAK_GPU_OPTIONS,
+              ...(config.gpuVendor && !CLOAK_GPU_OPTIONS.some(option => option.value === config.gpuVendor) ? [{ value: config.gpuVendor, label: `${config.gpuVendor}（当前值不受支持）` }] : []),
+            ]} />
+          </FormItem>
+          <FormItem label="屏幕分辨率预设" hint="同时设置屏幕宽高；启动窗口大小在上方单独配置。">
+            <Select aria-label="屏幕分辨率预设" value={
+              !config.screenWidth && !config.screenHeight ? '' :
+                CLOAK_SCREEN_PRESETS.some(([width, height]) => width === config.screenWidth && height === config.screenHeight) ? `${config.screenWidth},${config.screenHeight}` : 'custom'
+            } onChange={e => {
+              if (e.target.value === 'custom') return
+              const [screenWidth, screenHeight] = e.target.value.split(',')
+              update({ screenWidth: screenWidth || undefined, screenHeight: screenHeight || undefined })
+            }} options={[
+              { value: '', label: '使用种子默认' },
+              ...CLOAK_SCREEN_PRESETS.map(([width, height]) => ({ value: `${width},${height}`, label: `${width} × ${height}` })),
+              ...((config.screenWidth || config.screenHeight) && !CLOAK_SCREEN_PRESETS.some(([width, height]) => width === config.screenWidth && height === config.screenHeight) ? [{ value: 'custom', label: '自定义（见下方宽高）' }] : []),
+            ]} />
+          </FormItem>
+          {CLOAK_EDITABLE_FIELDS.map(({ field, label, options, placeholder, hint }) => (
+            <FormItem key={field} label={label} hint={hint}>
+              <EditableOptionInput label={label} value={config[field] ?? ''} onChange={nextValue => update({ [field]: nextValue || undefined })} options={[
+                { value: '', label: '使用内核默认（清空）' }, ...options,
+              ]} placeholder={placeholder} />
+            </FormItem>
+          ))}
+          <FormItem label="Canvas / WebGL / Audio 噪声"><Select value={config.noise || ''} onChange={e=>update({noise:e.target.value || undefined})} options={[{value:'',label:'种子默认'},{value:'true',label:'启用'},{value:'false',label:'关闭'}]}/></FormItem>
+        </div>
+        <p className="text-xs text-[var(--color-text-muted)]">148+：windows-font-metrics、allow-3p-cookies、fingerprint=off；150+：sapi-voices；151+：portable-cookies、transparent-proxy；155.0.8059.39.1+ 且仅 Linux/Windows：transparent-proxy-dns。请在高级模式使用对应 --fingerprint-* 参数。auto 会通过代理查询出口 IP。</p>
+      </FingerprintSection>}
+      {engine !== 'cloakbrowser' && <FingerprintSection title="兼容伪装">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormItem label="Canvas 噪声">
             <Select value={config.canvasNoise ?? ''} onChange={e => update({ canvasNoise: e.target.value || undefined })} options={NOISE_OPTIONS} />
@@ -472,7 +565,7 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
             ))}
           </div>
         </div>
-      </FingerprintSection>
+      </FingerprintSection>}
 
       <div className="border border-[var(--color-border)] rounded-lg overflow-hidden">
         <button
@@ -519,3 +612,11 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
     </div>
   )
 }
+
+const CLOAK_CAPABILITIES = [
+ { id: 'seed', name: '设备种子', mode: 'configurable' as const, coverage: '稳定种子生成一致设备画像；关闭伪装需要内核 148+' },
+ { id: 'locale', name: '语言与时区', mode: 'configurable' as const, coverage: '原生 fingerprint-locale / fingerprint-timezone' },
+ { id: 'hardware', name: '硬件与屏幕', mode: 'configurable' as const, coverage: 'CPU、内存、GPU 厂商、屏幕尺寸、存储配额、任务栏高度' },
+ { id: 'noise', name: '噪声与 WebRTC', mode: 'configurable' as const, coverage: '原生噪声开关及 WebRTC 出口 IP' },
+ { id: 'version', name: '扩展能力', mode: 'platform_limited' as const, coverage: '字体、Cookie、语音与透明代理依赖内核版本和平台；高级参数按实际内核过滤' },
+]

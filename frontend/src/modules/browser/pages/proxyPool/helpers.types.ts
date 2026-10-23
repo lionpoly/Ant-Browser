@@ -14,7 +14,7 @@ export interface ClashProxy {
   [key: string]: unknown
 }
 
-export type ProxyImportMode = 'clash' | 'direct' | 'chain'
+export type ProxyImportMode = 'clash' | 'direct' | 'chain' | 'webshare'
 
 export interface DirectImportForm {
   proxyName: string

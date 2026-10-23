@@ -94,6 +94,7 @@ type ProfilePackageImportPreviewProfile struct {
 }
 
 type ProfilePackageImportPreview struct {
+	Warnings      []string                             `json:"warnings,omitempty"`
 	Profiles      []ProfilePackageImportPreviewProfile `json:"profiles"`
 	Cancelled     bool                                 `json:"cancelled"`
 	ZipPath       string                               `json:"zipPath"`
@@ -124,7 +125,8 @@ type preparedProfilePackageImport struct {
 }
 
 type profilePackageContents struct {
-	Reader           *zip.ReadCloser
+	Reader           *zip.Reader
+	Closer           io.Closer
 	Profiles         []browser.Profile
 	DatabaseSnapshot *ProfilePackageDatabase
 }
@@ -199,7 +201,7 @@ func (a *App) BrowserProfilePackageImport() (ProfilePackageImportResult, error) 
 	zipPath, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title: "导入实例",
 		Filters: []wailsruntime.FileFilter{
-			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
+			{DisplayName: "实例文件 (*.zip;*.xlsx;*.txt)", Pattern: "*.zip;*.xlsx;*.txt"},
 		},
 	})
 	if err != nil {
@@ -222,7 +224,7 @@ func (a *App) BrowserProfilePackagePrepareImport() (ProfilePackageImportPreview,
 	zipPath, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title: "导入实例",
 		Filters: []wailsruntime.FileFilter{
-			{DisplayName: "ZIP 文件 (*.zip)", Pattern: "*.zip"},
+			{DisplayName: "实例文件 (*.zip;*.xlsx;*.txt)", Pattern: "*.zip;*.xlsx;*.txt"},
 		},
 	})
 	if err != nil {
@@ -293,12 +295,11 @@ func (a *App) writeProfilePackage(zipPath string, profiles []browser.Profile) (i
 	if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil {
 		return 0, fmt.Errorf("创建导出目录失败: %w", err)
 	}
-	tmpPath := zipPath + ".tmp"
-	_ = os.Remove(tmpPath)
-	out, err := os.Create(tmpPath)
+	out, err := os.CreateTemp(filepath.Dir(zipPath), ".ant-profile-export-*.tmp")
 	if err != nil {
 		return 0, fmt.Errorf("创建导出文件失败: %w", err)
 	}
+	tmpPath := out.Name()
 	zipWriter := zip.NewWriter(out)
 	fileCount := 0
 	var manifest ProfilePackageManifest
@@ -368,12 +369,23 @@ func (a *App) importProfilePackageFromPath(zipPath string) (ProfilePackageImport
 	return a.importProfilePackageFromPathWithMode(zipPath, profilePackageImportModeNew)
 }
 
+func (c *profilePackageContents) Close() error {
+	if c.Closer != nil {
+		return c.Closer.Close()
+	}
+	return nil
+}
+
 func openProfilePackageContents(zipPath string) (*profilePackageContents, error) {
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(zipPath)))
+	if ext == ".txt" || ext == ".xlsx" {
+		return openAdsPowerContents(strings.TrimSpace(zipPath))
+	}
 	reader, err := zip.OpenReader(strings.TrimSpace(zipPath))
 	if err != nil {
 		return nil, fmt.Errorf("打开实例包失败: %w", err)
 	}
-	contents := &profilePackageContents{Reader: reader}
+	contents := &profilePackageContents{Reader: &reader.Reader, Closer: reader}
 	completed := false
 	defer func() {
 		if !completed {
@@ -419,7 +431,7 @@ func (a *App) prepareProfilePackageImportFromPath(zipPath string) (ProfilePackag
 	if err != nil {
 		return ProfilePackageImportPreview{}, err
 	}
-	defer contents.Reader.Close()
+	defer contents.Close()
 	if contents.DatabaseSnapshot != nil && (a.db == nil || a.db.GetConn() == nil) {
 		return ProfilePackageImportPreview{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
 	}
@@ -428,7 +440,12 @@ func (a *App) prepareProfilePackageImportFromPath(zipPath string) (ProfilePackag
 	if err != nil {
 		return ProfilePackageImportPreview{}, err
 	}
+	warnings := []string{}
+	if contents.DatabaseSnapshot != nil {
+		warnings = contents.DatabaseSnapshot.Warnings
+	}
 	return ProfilePackageImportPreview{
+		Warnings:      warnings,
 		Cancelled:     false,
 		ZipPath:       zipPath,
 		ProfileCount:  len(contents.Profiles),
@@ -566,7 +583,7 @@ func (a *App) importProfilePackageFromPathWithModeAndActions(zipPath string, mod
 	if err != nil {
 		return ProfilePackageImportResult{}, err
 	}
-	defer contents.Reader.Close()
+	defer contents.Close()
 	if contents.DatabaseSnapshot != nil && (a.db == nil || a.db.GetConn() == nil) {
 		return ProfilePackageImportResult{}, fmt.Errorf("数据库未初始化，无法恢复实例关联数据")
 	}
@@ -1057,6 +1074,11 @@ func (a *App) extractProfileUserDataToDir(files []*zip.File, oldProfileID string
 			}
 			hasUserData = true
 		}
+		if strings.HasPrefix(filepath.ToSlash(rel), ".ant-import/") {
+			if err := os.MkdirAll(filepath.Join(destDir, ".ant-import"), 0o700); err != nil {
+				return false, err
+			}
+		}
 		if err := extractProfilePackageFile(file, destDir, rel); err != nil {
 			return false, err
 		}
@@ -1096,7 +1118,17 @@ func writeProfilePackageDir(zipWriter *zip.Writer, srcDir string, destPrefix str
 			_, err := zipWriter.Create(strings.TrimSuffix(zipName, "/") + "/")
 			return err
 		}
-		writer, err := zipWriter.Create(zipName)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = zipName
+		header.Method = zip.Deflate
+		writer, err := zipWriter.CreateHeader(header)
 		if err != nil {
 			return err
 		}
@@ -1155,7 +1187,11 @@ func extractProfilePackageFile(file *zip.File, destDir string, rel string) error
 		return err
 	}
 	defer reader.Close()
-	out, err := os.Create(target)
+	mode := os.FileMode(0o644)
+	if strings.HasPrefix(filepath.ToSlash(rel), ".ant-import/") {
+		mode = 0o600
+	}
+	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}

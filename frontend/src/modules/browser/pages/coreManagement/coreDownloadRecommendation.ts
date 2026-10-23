@@ -1,5 +1,12 @@
 export const FINGERPRINT_CHROMIUM_RELEASES_URL = 'https://github.com/adryfish/fingerprint-chromium/releases'
 
+export type CoreDownloadSource = 'fingerprint-chromium' | 'cloakbrowser'
+
+export const CORE_DOWNLOAD_SOURCES: Record<CoreDownloadSource, { label: string; releasesUrl: string }> = {
+  'fingerprint-chromium': { label: 'fingerprint-chromium', releasesUrl: FINGERPRINT_CHROMIUM_RELEASES_URL },
+  cloakbrowser: { label: 'CloakBrowser', releasesUrl: 'https://github.com/CloakHQ/cloakbrowser/releases' },
+}
+
 const FINGERPRINT_CHROMIUM_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases/latest'
 
 type CoreDownloadPlatform = 'windows' | 'linux' | 'darwin' | ''
@@ -19,6 +26,7 @@ export interface CoreDownloadTarget {
 export interface CoreDownloadRecommendation {
   target: CoreDownloadTarget
   releaseTag: string
+  publishedAt: string
   assetName: string
   downloadUrl: string
   releasesUrl: string
@@ -31,7 +39,10 @@ interface GitHubReleaseAsset {
 }
 
 interface GitHubReleaseResponse {
+  published_at?: string
   tag_name?: string
+  draft?: boolean
+  prerelease?: boolean
   html_url?: string
   assets?: GitHubReleaseAsset[]
 }
@@ -40,9 +51,9 @@ const archiveSuffixes = ['.zip', '.tar.xz', '.txz', '.tar.gz', '.tgz', '.tar.bz2
 
 function normalizePlatform(value: string | undefined): CoreDownloadPlatform {
   const text = (value || '').trim().toLowerCase()
+  if (text.includes('darwin') || text.includes('mac')) return 'darwin'
   if (text.includes('win')) return 'windows'
   if (text.includes('linux')) return 'linux'
-  if (text.includes('darwin') || text.includes('mac')) return 'darwin'
   return ''
 }
 
@@ -122,30 +133,56 @@ function pickReleaseAsset(assets: GitHubReleaseAsset[], target: CoreDownloadTarg
     .sort((left, right) => right.score - left.score || (left.asset.name || '').localeCompare(right.asset.name || ''))[0]?.asset || null
 }
 
-export async function fetchCoreDownloadRecommendation(
-  env: CoreDownloadRuntimeEnvironment | null | undefined,
-  signal?: AbortSignal,
-): Promise<CoreDownloadRecommendation | null> {
-  const target = resolveCoreDownloadTarget(env)
-  const response = await fetch(FINGERPRINT_CHROMIUM_LATEST_RELEASE_API_URL, {
+async function fetchReleaseData(url: string, signal?: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, {
     headers: { Accept: 'application/vnd.github+json' },
     signal,
   })
-  if (!response.ok) {
-    throw new Error(`GitHub Releases 请求失败: ${response.status}`)
+  if (!response.ok) throw new Error(`GitHub Releases 请求失败: ${response.status}`)
+  return response.json()
+}
+
+async function findCloakBrowserRelease(target: CoreDownloadTarget, signal?: AbortSignal): Promise<GitHubReleaseResponse | null> {
+  if (!target.platform || !target.arch || (target.platform === 'windows' && target.arch !== 'amd64')) return null
+  const arch = target.arch === 'amd64' ? 'x64' : 'arm64'
+  const suffix = target.platform === 'windows' ? '.zip' : '.tar.gz'
+  const assetName = `cloakbrowser-${target.platform}-${arch}${suffix}`
+  // SDK and Pro releases may have no public binary; each platform has its own latest build.
+  for (let page = 1; page <= 3; page++) {
+    const releases = await fetchReleaseData(`https://api.github.com/repos/CloakHQ/cloakbrowser/releases?per_page=100&page=${page}`, signal) as GitHubReleaseResponse[]
+    for (const release of releases) {
+      if (release.draft || release.prerelease || !/^chromium-v\d+(?:\.\d+){3,4}$/.test(release.tag_name || '')) continue
+      const asset = release.assets?.find(item => item.name === assetName && item.browser_download_url)
+      if (asset) return { ...release, assets: [asset] }
+    }
+    if (releases.length < 100) break
   }
-  const release = await response.json() as GitHubReleaseResponse
+  return null
+}
+
+export async function fetchCoreDownloadRecommendation(
+  env: CoreDownloadRuntimeEnvironment | null | undefined,
+  signal?: AbortSignal,
+  source: CoreDownloadSource = 'fingerprint-chromium',
+): Promise<CoreDownloadRecommendation | null> {
+  const target = resolveCoreDownloadTarget(env)
+  const release = source === 'cloakbrowser'
+    ? await findCloakBrowserRelease(target, signal)
+    : await fetchReleaseData(FINGERPRINT_CHROMIUM_LATEST_RELEASE_API_URL, signal) as GitHubReleaseResponse
+  if (!release) return null
   const asset = pickReleaseAsset(release.assets || [], target)
   if (!asset?.name || !asset.browser_download_url) return null
 
   const releaseTag = (release.tag_name || '').trim()
-  const majorVersion = releaseTag.split('.')[0] || ''
+  const majorVersion = releaseTag.replace(/^(chromium-)?v/, '').split('.')[0] || ''
+  const namePrefix = source === 'cloakbrowser' ? 'cloakbrowser' : 'chrome'
   return {
     target,
     releaseTag,
+    publishedAt: release.published_at || '',
     assetName: asset.name,
     downloadUrl: asset.browser_download_url,
-    releasesUrl: release.html_url || FINGERPRINT_CHROMIUM_RELEASES_URL,
-    namePlaceholder: majorVersion ? `例如: chrome-${majorVersion}` : '例如: chrome-latest',
+    releasesUrl: release.html_url || CORE_DOWNLOAD_SOURCES[source].releasesUrl,
+    namePlaceholder: `例如: ${namePrefix}-${majorVersion || 'latest'}`,
   }
 }

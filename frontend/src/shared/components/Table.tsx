@@ -161,7 +161,7 @@ export function Table<T extends Record<string, any>>({
                   <td
                     key={col.key}
                     className={clsx(
-                      'px-4 py-3.5 text-sm text-[var(--color-text-secondary)]',
+                      'px-4 py-3.5 text-sm text-[var(--color-text-secondary)] whitespace-nowrap align-middle',
                       col.align === 'center' && 'text-center',
                       col.align === 'right' && 'text-right'
                     )}

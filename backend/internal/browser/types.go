@@ -76,6 +76,7 @@ type Tab struct {
 
 // Settings 浏览器全局设置
 type Settings struct {
+	AutoTimezoneOnStart    bool     `json:"autoTimezoneOnStart"`
 	UserDataRoot           string   `json:"userDataRoot"`
 	DefaultFingerprintArgs []string `json:"defaultFingerprintArgs"`
 	DefaultLaunchArgs      []string `json:"defaultLaunchArgs"`
@@ -89,10 +90,11 @@ type Settings struct {
 
 // CoreInput 内核配置输入
 type CoreInput struct {
-	CoreId    string `json:"coreId"`
-	CoreName  string `json:"coreName"`
-	CorePath  string `json:"corePath"`
-	IsDefault bool   `json:"isDefault"`
+	FingerprintEngine string `yaml:"fingerprint_engine,omitempty" json:"fingerprintEngine,omitempty"`
+	CoreId            string `json:"coreId"`
+	CoreName          string `json:"coreName"`
+	CorePath          string `json:"corePath"`
+	IsDefault         bool   `json:"isDefault"`
 }
 
 // CoreValidateResult 内核路径验证结果

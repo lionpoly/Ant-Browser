@@ -14,7 +14,16 @@ export function getSystemTimezone(): string {
   }
 }
 
+export type FingerprintEngine = 'fingerprint-chromium' | 'cloakbrowser'
 export interface FingerprintConfig {
+  gpuVendor?: string
+  screenWidth?: string
+  screenHeight?: string
+  storageQuota?: string
+  taskbarHeight?: string
+  webrtcIP?: string
+  noise?: string
+
   // 指纹种子（核心）
   seed?: string            // --fingerprint=<seed>  控制所有随机噪声的根种子
 
@@ -89,8 +98,17 @@ export function withAdaptiveDefaultWindowSize(args: string[]): string[] {
   return [...normalizedArgs, `--window-size=${buildAdaptiveDefaultWindowSize()}`]
 }
 
+export const CLOAK_FIELDS: Record<string, keyof FingerprintConfig> = {
+ '--fingerprint-locale': 'lang', '--fingerprint-timezone': 'timezone',
+ '--fingerprint-gpu-vendor': 'gpuVendor', '--fingerprint-screen-width': 'screenWidth',
+ '--fingerprint-screen-height': 'screenHeight', '--fingerprint-storage-quota': 'storageQuota',
+ '--fingerprint-taskbar-height': 'taskbarHeight', '--fingerprint-webrtc-ip': 'webrtcIP',
+ '--fingerprint-noise': 'noise', '--fingerprint-device-memory': 'deviceMemory',
+}
+
 // CLI 参数前缀 → FingerprintConfig 字段映射
 export const KEY_MAP: Record<string, keyof FingerprintConfig> = {
+ ...CLOAK_FIELDS,
   '--fingerprint': 'seed',
   '--fingerprint-brand': 'brand',
   '--fingerprint-brand-version': 'brandVersion',
@@ -188,7 +206,16 @@ const NO_EFFECT_FINGERPRINT_ARG_KEYS = new Set([
 ])
 
 // FingerprintConfig → string[]
-export function serialize(config: FingerprintConfig): string[] {
+export function serialize(config: FingerprintConfig, engine: FingerprintEngine = 'fingerprint-chromium'): string[] {
+ if (engine === 'cloakbrowser') {
+   const common = serialize({ ...config, ...Object.fromEntries(Object.values(CLOAK_FIELDS).map(field => [field, undefined])), lang: undefined, timezone: undefined, canvasNoise: undefined, clientRectsNoise: undefined, disableSpoofing: undefined, unknownArgs: [] })
+   for (const [key, field] of Object.entries(CLOAK_FIELDS)) {
+     const value = config[field]
+     if (typeof value === 'string' && value) common.push(`${key}=${value === 'system' && field === 'timezone' ? getSystemTimezone() : value}`)
+   }
+   return [...common, ...(config.unknownArgs || [])]
+ }
+
   const args: string[] = []
   if (config.seed) args.push(`--fingerprint=${config.seed}`)
   if (config.brand) args.push(`--fingerprint-brand=${config.brand}`)
@@ -229,6 +256,12 @@ export function serialize(config: FingerprintConfig): string[] {
   const disableSpoofing = normalizeDisableSpoofing(config.disableSpoofing)
   if (disableSpoofing.length) args.push(`--disable-spoofing=${disableSpoofing.join(',')}`)
 
+  // Preserve native switches that older editors treated as unknown raw args.
+  for (const [key, field] of Object.entries(CLOAK_FIELDS)) {
+    if (['lang','timezone','deviceMemory'].includes(field)) continue
+    const value = config[field]
+    if (typeof value === 'string' && value) args.push(`${key}=${value}`)
+  }
   return [...args, ...(config.unknownArgs ?? [])]
 }
 
@@ -291,7 +324,25 @@ export function normalizeDisableSpoofing(values?: string[]): string[] {
   return result
 }
 
-export function validateFingerprintArgs(rawArgs: string[]): FingerprintValidationResult {
+export function validateFingerprintArgs(rawArgs: string[], engine: FingerprintEngine = 'fingerprint-chromium'): FingerprintValidationResult {
+ if (engine === 'cloakbrowser') {
+  const config = deserialize(rawArgs)
+  const issues: FingerprintValidationIssue[] = []
+  const common = serialize({ ...config, seed: ['off','false','0','disable','disabled'].includes((config.seed || '').toLowerCase()) ? undefined : config.seed, unknownArgs: [] })
+  issues.push(...validateFingerprintArgs(common).issues.filter(item => item.level === 'error'))
+  for (const field of ['deviceMemory','screenWidth','screenHeight','storageQuota','taskbarHeight'] as const) {
+   const value = config[field]
+   if (value && (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) < (field === 'taskbarHeight' ? 0 : 0.1))) issues.push({level:'error',message:`${field} 必须为有效数值`})
+  }
+  for (const field of ['screenWidth', 'screenHeight', 'taskbarHeight'] as const) {
+   const value = config[field]
+   if (value && (!/^\d+$/.test(value) || Number(value) > 32768)) issues.push({level:'error',message:`${field} 必须为 0 到 32768 范围内的整数`})
+  }
+  if (config.gpuVendor && !['NVIDIA','Intel'].includes(config.gpuVendor)) issues.push({level:'error',message:'GPU 家族仅支持 NVIDIA / Intel'})
+  if (config.noise && !['true','false'].includes(config.noise)) issues.push({level:'error',message:'噪声选项仅支持 true / false'})
+  return {valid: !issues.some(item => item.level === 'error'), issues}
+ }
+
   const config = deserialize(rawArgs || [])
   const issues: FingerprintValidationIssue[] = []
 
@@ -578,14 +629,14 @@ export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
   },
 ]
 
-export function applyLocaleToFingerprintArgs(args: string[], lang: string, timezone: string): string[] {
+export function applyLocaleToFingerprintArgs(args: string[], lang: string, timezone: string, engine: FingerprintEngine = 'fingerprint-chromium'): string[] {
   const nextConfig = deserialize(args || [])
   if (lang) {
     nextConfig.lang = lang
     nextConfig.acceptLang = buildAcceptLanguage(lang)
   }
   if (timezone) nextConfig.timezone = timezone
-  return serialize(nextConfig)
+  return serialize(nextConfig, engine)
 }
 
 export function buildAcceptLanguage(lang: string): string {

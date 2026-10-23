@@ -191,6 +191,7 @@ export interface BrowserProfilePackageImportPreviewProfile {
 }
 
 export interface BrowserProfilePackageImportPreview {
+ warnings?: string[]
   cancelled: boolean
   zipPath: string
   profileCount: number
@@ -231,6 +232,7 @@ export interface BrowserSettings {
   defaultFingerprintArgs: string[]
   defaultLaunchArgs: string[]
   defaultStartUrls: string[]
+  autoTimezoneOnStart: boolean
   lightStartEnabled: boolean
   restoreLastSession: boolean
   startReadyTimeoutMs: number
@@ -257,6 +259,7 @@ export interface ProxyCheckSettings {
 }
 
 export interface BrowserCore {
+  fingerprintEngine?: string
   coreId: string
   coreName: string
   corePath: string
@@ -264,6 +267,7 @@ export interface BrowserCore {
 }
 
 export interface BrowserCoreInput {
+  fingerprintEngine?: string
   coreId: string
   coreName: string
   corePath: string

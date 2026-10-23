@@ -350,6 +350,10 @@ export function BrowserGetCookies(arg1) {
   return window['go']['main']['App']['BrowserGetCookies'](arg1);
 }
 
+export function BrowserImportCookies(arg1, arg2) {
+  return window['go']['main']['App']['BrowserImportCookies'](arg1, arg2);
+}
+
 export function BrowserInstanceGetTabs(arg1) {
   return window['go']['main']['App']['BrowserInstanceGetTabs'](arg1);
 }
@@ -534,12 +538,28 @@ export function BrowserProxyCoreStatus(arg1) {
   return window['go']['main']['App']['BrowserProxyCoreStatus'](arg1);
 }
 
+export function BrowserProxyDeleteImportSource(arg1) {
+  return window['go']['main']['App']['BrowserProxyDeleteImportSource'](arg1);
+}
+
 export function BrowserProxyFetchClashByURL(arg1) {
   return window['go']['main']['App']['BrowserProxyFetchClashByURL'](arg1);
 }
 
 export function BrowserProxyFetchClashByURLWithProxy(arg1, arg2) {
   return window['go']['main']['App']['BrowserProxyFetchClashByURLWithProxy'](arg1, arg2);
+}
+
+export function BrowserProxyFetchWebshareProxies(arg1) {
+  return window['go']['main']['App']['BrowserProxyFetchWebshareProxies'](arg1);
+}
+
+export function BrowserProxyGetImportPreferences() {
+  return window['go']['main']['App']['BrowserProxyGetImportPreferences']();
+}
+
+export function BrowserProxyGetImportSources() {
+  return window['go']['main']['App']['BrowserProxyGetImportSources']();
 }
 
 export function BrowserProxyList() {
@@ -560,6 +580,14 @@ export function BrowserProxyProbeBrowserPage(arg1) {
 
 export function BrowserProxyResolveLocation(arg1) {
   return window['go']['main']['App']['BrowserProxyResolveLocation'](arg1);
+}
+
+export function BrowserProxySaveImportPreference(arg1, arg2) {
+  return window['go']['main']['App']['BrowserProxySaveImportPreference'](arg1, arg2);
+}
+
+export function BrowserProxySaveImportSource(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BrowserProxySaveImportSource'](arg1, arg2, arg3, arg4);
 }
 
 export function BrowserProxyTestSpeed(arg1) {

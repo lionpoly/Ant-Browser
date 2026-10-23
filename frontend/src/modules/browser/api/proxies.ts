@@ -1,6 +1,22 @@
 ﻿import type { BrowserProxy, ProxyBridgeWarmupResult, ProxyCoreDownloadInfoResult, ProxyCoreStatusResult, ProxyIPHealthResult, ProxyLocationResolveResult, ProxySpeedTestResult } from '../types'
 import { getBindings, getGoApp, getMockProxies, nowISOString, setMockProxies } from './runtime'
 
+export interface WebshareProxyRecord {
+  id: string
+  username: string
+  password: string
+  proxy_address: string
+  port: number
+  valid: boolean
+  country_code?: string
+  city_name?: string
+}
+
+export interface WebshareImportResult {
+  count: number
+  results: WebshareProxyRecord[]
+}
+
 export interface ClashImportURLResult {
   url: string
   content: string
@@ -11,6 +27,18 @@ export interface ClashImportURLResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export async function fetchWebshareProxies(apiKey: string): Promise<WebshareImportResult> {
+  const bindings: any = await getBindings()
+  if (bindings?.BrowserProxyFetchWebshareProxies) {
+    return (await bindings.BrowserProxyFetchWebshareProxies(apiKey)) || { count: 0, results: [] }
+  }
+  const goApp = getGoApp()
+  if (goApp?.BrowserProxyFetchWebshareProxies) {
+    return (await goApp.BrowserProxyFetchWebshareProxies(apiKey)) || { count: 0, results: [] }
+  }
+  throw new Error('当前环境不支持 Webshare 导入')
 }
 
 export async function fetchBrowserProxies(): Promise<BrowserProxy[]> {
@@ -315,4 +343,53 @@ export async function browserProxyCoreOpenLocal(core: string, goos: string, goar
     return true
   }
   return false
+}
+
+export interface ProxyImportPreferences {
+  clashUrl: string
+  webshareApiKey: string
+}
+
+export async function getProxyImportPreferences(): Promise<ProxyImportPreferences> {
+  const bindings: any = await getBindings()
+  const app = bindings?.BrowserProxyGetImportPreferences ? bindings : getGoApp()
+  if (!app?.BrowserProxyGetImportPreferences) throw new Error('当前环境不支持读取导入信息')
+  return await app.BrowserProxyGetImportPreferences()
+}
+
+export async function saveProxyImportPreference(field: keyof ProxyImportPreferences, value: string): Promise<void> {
+  const bindings: any = await getBindings()
+  const app = bindings?.BrowserProxySaveImportPreference ? bindings : getGoApp()
+  if (!app?.BrowserProxySaveImportPreference) throw new Error('当前环境不支持保存导入信息')
+  await app.BrowserProxySaveImportPreference(field, value)
+}
+
+export interface ProxyImportSource {
+  id: string
+  kind: 'clash' | 'webshare'
+  name: string
+  value: string
+}
+export interface ProxyImportSources {
+  sources: ProxyImportSource[]
+  selectedClashId: string
+  selectedWebshareId: string
+}
+export async function getProxyImportSources(): Promise<ProxyImportSources> {
+  const bindings: any = await getBindings()
+  const app = bindings?.BrowserProxyGetImportSources ? bindings : getGoApp()
+  if (!app?.BrowserProxyGetImportSources) throw new Error('当前环境不支持读取导入来源')
+  return await app.BrowserProxyGetImportSources()
+}
+export async function saveProxyImportSource(id: string, kind: ProxyImportSource['kind'], name: string, value: string): Promise<ProxyImportSource> {
+  const bindings: any = await getBindings()
+  const app = bindings?.BrowserProxySaveImportSource ? bindings : getGoApp()
+  if (!app?.BrowserProxySaveImportSource) throw new Error('当前环境不支持保存导入来源')
+  return await app.BrowserProxySaveImportSource(id, kind, name, value)
+}
+export async function deleteProxyImportSource(id: string): Promise<void> {
+  const bindings: any = await getBindings()
+  const app = bindings?.BrowserProxyDeleteImportSource ? bindings : getGoApp()
+  if (!app?.BrowserProxyDeleteImportSource) throw new Error('当前环境不支持删除导入来源')
+  await app.BrowserProxyDeleteImportSource(id)
 }

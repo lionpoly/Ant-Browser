@@ -7,6 +7,8 @@ import { browserProxyResolveLocation, checkBrowserProfileFingerprint, createBrow
 import { FingerprintPanel } from '../components/FingerprintPanel'
 import { applyLocaleToFingerprintArgs, validateFingerprintArgs, withAdaptiveDefaultWindowSize } from '../utils/fingerprintSerializer'
 import { TagInput } from '../components/TagInput'
+import { GroupManagerModal } from '../components/GroupManagerModal'
+import { ProfileCookiesModal } from '../components/ProfileCookiesModal'
 import { GroupSelector } from '../components/GroupSelector'
 import { ProxyPickerModal } from '../components/ProxyPickerModal'
 
@@ -259,6 +261,8 @@ export function BrowserEditPage() {
   const [launchArgsText, setLaunchArgsText] = useState('')
   const [allTags, setAllTags] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
+  const [cookiesOpen, setCookiesOpen] = useState(false)
   const [proxyPickerOpen, setProxyPickerOpen] = useState(false)
   const [proxyMode, setProxyMode] = useState<ProxySourceMode>('pool')
   const [isDirty, setIsDirty] = useState(false)
@@ -332,6 +336,8 @@ export function BrowserEditPage() {
     loadData()
   }, [id, isCreate])
 
+  const selectedCore = cores.find(core => core.coreId === formData.coreId) || cores.find(core => core.isDefault) || cores[0]
+  const fingerprintEngine = selectedCore?.fingerprintEngine === 'cloakbrowser' || (!selectedCore?.fingerprintEngine && /cloakbrowser/i.test(`${selectedCore?.coreName || ''} ${selectedCore?.corePath || ''}`)) ? 'cloakbrowser' : 'fingerprint-chromium'
   const fingerprintArgsKey = formData.fingerprintArgs.join('\n')
 
   useEffect(() => {
@@ -397,7 +403,7 @@ export function BrowserEditPage() {
       memoryLimitMb: Math.max(0, Math.floor(Number(formData.memoryLimitMb) || 0)),
       launchArgs: normalizeLaunchArgs(launchArgsText.split('\n')),
     }
-    const fingerprintValidation = validateFingerprintArgs(payload.fingerprintArgs)
+    const fingerprintValidation = validateFingerprintArgs(payload.fingerprintArgs, fingerprintEngine)
     if (!fingerprintValidation.valid) {
       setSaveError(fingerprintValidation.issues.filter(issue => issue.level === 'error').map(issue => issue.message).join('\n'))
       return
@@ -448,7 +454,7 @@ export function BrowserEditPage() {
         toast.error(result.error || '无法根据代理 IP 匹配定位')
         return
       }
-      const nextArgs = applyLocaleToFingerprintArgs(formData.fingerprintArgs, result.lang, result.timezone)
+      const nextArgs = applyLocaleToFingerprintArgs(formData.fingerprintArgs, result.lang, result.timezone, fingerprintEngine)
       handleChange('fingerprintArgs', nextArgs)
       toast.success(`已设置 ${result.lang} / ${result.timezone}`)
     } catch (error: unknown) {
@@ -606,16 +612,25 @@ export function BrowserEditPage() {
             />
           </FormItem>
           <FormItem label="分组">
-            <GroupSelector
-              groups={groups}
-              value={formData.groupId || ''}
-              onChange={groupId => handleChange('groupId', groupId)}
-              placeholder="未分组"
-              className="w-full"
-            />
+            <div className="flex gap-2">
+              <GroupSelector groups={groups} value={formData.groupId || ''} onChange={groupId => handleChange('groupId', groupId)} placeholder="未分组" className="min-w-0 flex-1" />
+              <Button variant="secondary" onClick={() => setGroupManagerOpen(true)}>分组管理</Button>
+            </div>
           </FormItem>
         </div>
       </Card>
+
+      <Card title="Cookies">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-[var(--color-text-muted)]">{isCreate ? '保存实例后可管理 Cookies。' : '查看、导入、导出及清除实例 Cookies，操作立即生效。'}</p>
+          <Button variant="secondary" disabled={isCreate} onClick={() => setCookiesOpen(true)}>Cookies 管理</Button>
+        </div>
+      </Card>
+      <GroupManagerModal open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} onChanged={(items, deleted) => {
+        setGroups(items)
+        if (deleted && formData.groupId === deleted.groupId) handleChange('groupId', deleted.parentId)
+      }} />
+      {!isCreate && id && <ProfileCookiesModal open={cookiesOpen} profileId={id} onClose={() => setCookiesOpen(false)} />}
 
       <Card title="代理与定位">
         <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4 items-start">
@@ -727,6 +742,7 @@ export function BrowserEditPage() {
         )}
       >
         <FingerprintPanel
+          engine={fingerprintEngine}
           value={formData.fingerprintArgs}
           onChange={args => handleChange('fingerprintArgs', args)}
         />

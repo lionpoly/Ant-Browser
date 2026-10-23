@@ -115,14 +115,16 @@ export function ProxyPoolPage() {
 
   const {
     importModalOpen, setImportModalOpen, importMode, importUrl, importFetchProxyId, importResolvedUrl, importText,
-    importDnsServers, importNamePrefix, importGroupName, chainImportText, directImportText,
+    importDnsServers, importNamePrefix, importGroupName, webshareApiKey, fetchingWebshare, setWebshareApiKey, chainImportText, directImportText,
     chainImportForm, directImportForm, previewModalOpen, setPreviewModalOpen, previewList, removedPreviewProxyNames,
     importing, fetchingImportUrl, canParseImport, setImportText, setImportDnsServers,
     setImportNamePrefix, setImportGroupName, setImportFetchProxyId, setChainImportText, setDirectImportText,
     setChainImportForm, setDirectImportForm, handleRemovePreviewProxy, updateChainImportHop,
     handleImportModeChange, handleFillChainTemplate, handleFillDirectTemplate, handleCopyChainTemplate,
     handleCopyDirectTemplate, handleApplyChainJSON, handleApplyDirectText, handleImportUrlChange,
-    handleFetchImportURL, handleParseImport, handleConfirmImport,
+    handleFetchImportURL, handleFetchWebshare, handleForgetImportSource, handleParseImport, handleConfirmImport,
+    importSources, selectedImportSourceId, importSourceName, savingSource, loadingSources,
+    handleSelectImportSource, setImportSourceName, handleSaveImportSource,
   } = useProxyImportFlow({
     proxies,
     globalAutoRefreshEnabled,
@@ -424,6 +426,8 @@ export function ProxyPoolPage() {
         importDnsServers={importDnsServers}
         importNamePrefix={importNamePrefix}
         importGroupName={importGroupName}
+        webshareApiKey={webshareApiKey}
+        fetchingWebshare={fetchingWebshare}
         chainImportText={chainImportText}
         directImportText={directImportText}
         chainImportForm={chainImportForm}
@@ -432,6 +436,15 @@ export function ProxyPoolPage() {
         fetchProxyOptions={proxies.filter(proxy => proxy.proxyConfig.trim() && !proxy.proxyConfig.trim().toLowerCase().startsWith('direct://'))}
         canParseImport={canParseImport}
         onClose={() => setImportModalOpen(false)}
+        importSources={importSources}
+        selectedImportSourceId={selectedImportSourceId}
+        importSourceName={importSourceName}
+        savingSource={savingSource}
+        loadingSources={loadingSources}
+        onSelectImportSource={handleSelectImportSource}
+        onImportSourceNameChange={setImportSourceName}
+        onSaveImportSource={() => void handleSaveImportSource()}
+        onForgetImportSource={() => void handleForgetImportSource()}
         onParse={handleParseImport}
         onFetchImportUrl={handleFetchImportURL}
         onImportModeChange={handleImportModeChange}
@@ -441,6 +454,8 @@ export function ProxyPoolPage() {
         onImportDnsServersChange={setImportDnsServers}
         onImportNamePrefixChange={setImportNamePrefix}
         onImportGroupNameChange={setImportGroupName}
+        onWebshareApiKeyChange={setWebshareApiKey}
+        onFetchWebshare={() => void handleFetchWebshare()}
         onChainImportTextChange={setChainImportText}
         onDirectImportTextChange={setDirectImportText}
         onApplyChainJSON={handleApplyChainJSON}

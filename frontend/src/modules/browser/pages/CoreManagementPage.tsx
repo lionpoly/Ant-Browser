@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from 'react'
+﻿import { useEffect, useState, useCallback, useRef } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { Badge, Button, Card, ConfirmModal, Table, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
@@ -22,6 +22,7 @@ export function CoreManagementPage() {
 
   // 全局设置状态
   const [settings, setSettings] = useState<BrowserSettings>({
+    autoTimezoneOnStart: false,
     userDataRoot: '',
     defaultFingerprintArgs: [],
     defaultLaunchArgs: [],
@@ -59,9 +60,17 @@ export function CoreManagementPage() {
 
   // 内核下载
   const [downloadModalOpen, setDownloadModalOpen] = useState(false)
-  const [downloadForm, setDownloadForm] = useState<CoreDownloadForm>({ name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
+  const [downloadForm, setDownloadForm] = useState<CoreDownloadForm>({ source: 'fingerprint-chromium', name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
   const [downloadProgress, setDownloadProgress] = useState<CoreDownloadProgress | null>(null)
   const [downloadRecommendation, setDownloadRecommendation] = useState<CoreDownloadRecommendation | null>(null)
+  const [recommendationRefresh, setRecommendationRefresh] = useState(0)
+  const downloadStarted = useRef(false)
+  const recommendationEpoch = useRef(0)
+  const recommendationAbort = useRef<AbortController | null>(null)
+  const invalidateRecommendation = () => {
+    recommendationEpoch.current++
+    recommendationAbort.current?.abort()
+  }
   const [downloadRecommendationLoading, setDownloadRecommendationLoading] = useState(false)
   const [downloadRecommendationError, setDownloadRecommendationError] = useState('')
   const [importProgress, setImportProgress] = useState<CoreDownloadProgress | null>(null)
@@ -281,56 +290,64 @@ export function CoreManagementPage() {
     const core = cores.find(c => c.coreId === record.coreId)
     if (core) {
       setEditingCore(core)
-      setEditForm({ coreName: core.coreName, corePath: core.corePath })
+      setEditForm({ coreName: core.coreName, corePath: core.corePath, fingerprintEngine: core.fingerprintEngine || '' })
       setPathValidResult({ valid: record.pathValid, message: record.pathMessage })
       setEditModalOpen(true)
     }
   }
 
-  const loadCoreDownloadRecommendation = async () => {
-    setDownloadRecommendationLoading(true)
-    setDownloadRecommendationError('')
-    try {
-      let runtimeEnv: { platform?: string; arch?: string } | null = null
-      try {
-        runtimeEnv = await Environment()
-      } catch {
-        runtimeEnv = null
-      }
-      const recommendation = await fetchCoreDownloadRecommendation(runtimeEnv)
-      setDownloadRecommendation(recommendation)
-      if (!recommendation) {
-        setDownloadRecommendationError('当前环境没有可自动解压的 Release 压缩包')
-        return
-      }
-      setDownloadForm(prev => ({
-        ...prev,
-        url: prev.url.trim() ? prev.url : recommendation.downloadUrl,
-      }))
-    } catch (error: any) {
+  useEffect(() => {
+    if (!downloadModalOpen) return
+    const controller = new AbortController()
+    recommendationAbort.current = controller
+    const epoch = ++recommendationEpoch.current
+    const source = downloadForm.source
+    const isCurrent = () => active && epoch === recommendationEpoch.current
+    let active = true
+    const load = async () => {
       setDownloadRecommendation(null)
-      setDownloadRecommendationError(error?.message || '获取推荐地址失败')
-    } finally {
-      setDownloadRecommendationLoading(false)
+      setDownloadRecommendationLoading(true)
+      setDownloadRecommendationError('')
+      try {
+        const runtimeEnv = await Promise.resolve().then(() => Environment()).catch(() => null)
+        const recommendation = await fetchCoreDownloadRecommendation(runtimeEnv, controller.signal, downloadForm.source)
+        if (!isCurrent()) return
+        setDownloadRecommendation(recommendation)
+        if (!recommendation) {
+          setDownloadRecommendationError('当前来源没有匹配此系统和架构的公开内核包，请打开 Releases 查看')
+          return
+        }
+        if (!downloadStarted.current && downloadForm.mode !== 'redownload') {
+          setDownloadForm(prev => prev.source !== source ? prev : ({ ...prev, url: prev.url.trim() ? prev.url : recommendation.downloadUrl }))
+        }
+      } catch (error: any) {
+        if (isCurrent()) setDownloadRecommendationError(error?.message || '获取推荐地址失败')
+      } finally {
+        if (isCurrent()) setDownloadRecommendationLoading(false)
+      }
     }
-  }
+    void load()
+    return () => { active = false; controller.abort() }
+  }, [downloadModalOpen, downloadForm.source, recommendationRefresh])
 
   const handleOpenDownload = () => {
-    setDownloadForm({ name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
+    invalidateRecommendation()
+    setDownloadForm({ source: 'fingerprint-chromium', name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
     setDownloadProgress(null)
     setDownloadRecommendation(null)
     setDownloadRecommendationError('')
     setDownloadModalOpen(true)
-    void loadCoreDownloadRecommendation()
+    downloadStarted.current = false
   }
 
   const handleRedownload = (record: CoreDisplayInfo) => {
-    setDownloadForm({ coreId: record.coreId, name: record.coreName, url: '', proxyMode: 'system', proxyId: '', mode: 'redownload' })
+    invalidateRecommendation()
+    setDownloadForm({ source: 'fingerprint-chromium', coreId: record.coreId, name: record.coreName, url: '', proxyMode: 'system', proxyId: '', mode: 'redownload' })
     setDownloadProgress(null)
     setDownloadRecommendation(null)
     setDownloadRecommendationError('')
     setDownloadModalOpen(true)
-    void loadCoreDownloadRecommendation()
+    downloadStarted.current = false
   }
 
   // 保存内核
@@ -346,6 +363,7 @@ export function CoreManagementPage() {
     setSaving(true)
     try {
       const input: BrowserCoreInput = {
+        fingerprintEngine: editForm.fingerprintEngine || '',
         coreId: editingCore?.coreId || `core-${Date.now()}`,
         coreName: editForm.coreName.trim(),
         corePath: editForm.corePath.trim(),
@@ -406,6 +424,7 @@ export function CoreManagementPage() {
       toast.error('缺少内核ID')
       return
     }
+    downloadStarted.current = true
     setDownloadProgress({ phase: 'starting', progress: 0, message: '准备下载...' })
     try {
       // 在这儿我们需要从 proxies 中寻找匹配到的代理设定，如果有则传过去的 url
@@ -428,6 +447,7 @@ export function CoreManagementPage() {
         await BrowserCoreDownload(downloadForm.name.trim(), downloadForm.url.trim(), targetProxy)
       }
     } catch (err: any) {
+      downloadStarted.current = false
       toast.error(err.message || '内部启动下载失败')
       setDownloadProgress(null)
     }
@@ -453,6 +473,7 @@ export function CoreManagementPage() {
     setSavingSettings(true)
     try {
       const newSettings: BrowserSettings = {
+        autoTimezoneOnStart: settings.autoTimezoneOnStart,
         userDataRoot: settingsForm.userDataRoot.trim(),
         defaultFingerprintArgs: settingsForm.defaultFingerprintArgs.split('\n').map(s => s.trim()).filter(Boolean),
         defaultLaunchArgs: settingsForm.defaultLaunchArgs.split('\n').map(s => s.trim()).filter(Boolean),
@@ -551,8 +572,16 @@ export function CoreManagementPage() {
         proxies={proxies}
         setForm={setDownloadForm}
         setProgress={setDownloadProgress}
-        onRefreshRecommendation={loadCoreDownloadRecommendation}
-        onClose={() => setDownloadModalOpen(false)}
+        onRefreshRecommendation={() => { invalidateRecommendation(); setRecommendationRefresh(value => value + 1) }}
+        onSourceChange={source => {
+          invalidateRecommendation()
+          downloadStarted.current = false
+          setDownloadRecommendation(null)
+          setDownloadRecommendationLoading(true)
+          setDownloadRecommendationError('')
+          setDownloadForm(prev => ({ ...prev, source, url: '' }))
+        }}
+        onClose={() => { invalidateRecommendation(); setDownloadModalOpen(false) }}
         onStart={handleStartDownloadCore}
       />
     </div>

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, RefreshCw, Trash2 } from 'lucide-react'
-import { Badge, Button, Card, Input, Table, toast } from '../../../shared/components'
+import { Download, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { Badge, Button, Card, Input, Modal, Table, Textarea, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { CookieInfo } from '../types'
-import { clearBrowserCookies, exportBrowserCookies, fetchBrowserCookies } from '../api'
+import { clearBrowserCookies, exportBrowserCookies, fetchBrowserCookies, importBrowserCookies } from '../api'
 
 interface Props {
   profileId: string
@@ -23,6 +23,23 @@ export function CookieManagerCard({ profileId, profileName, running, ready }: Pr
   const [loading, setLoading] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
+
+  const closeImport = () => { if (!importing) { setImportOpen(false); setImportText('') } }
+  const handleImport = async () => {
+    setImporting(true)
+    try {
+      const count = await importBrowserCookies(profileId, importText)
+      setImportOpen(false)
+      setImportText('')
+      toast.success(`已导入 ${count} 条 Cookie`)
+      await loadCookies()
+    } catch (error: any) { toast.error(error?.message || '导入 Cookie 失败') }
+    finally { setImporting(false) }
+  }
+
 
   const loadCookies = async () => {
     if (!ready) return
@@ -110,6 +127,7 @@ export function CookieManagerCard({ profileId, profileName, running, ready }: Pr
       : `共 ${cookies.length} 条${filterDomain ? `，已过滤 ${filteredCookies.length} 条` : ''}`
 
   return (
+    <>
     <Card title="Cookie 管理" subtitle={subtitle}>
       {!running ? (
         <p className="text-sm text-[var(--color-text-muted)] py-4 text-center">
@@ -129,15 +147,18 @@ export function CookieManagerCard({ profileId, profileName, running, ready }: Pr
               className="w-full sm:w-64"
             />
             <div className="flex gap-2 flex-shrink-0">
-              <Button size="sm" variant="ghost" onClick={loadCookies} disabled={loading}>
+              <Button size="sm" variant="ghost" onClick={loadCookies} disabled={loading || clearing || importing}>
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 刷新
               </Button>
-              <Button size="sm" variant="ghost" onClick={handleExport}>
+              <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)} disabled={loading || clearing || importing}>
+                <Upload className="w-4 h-4" />导入
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleExport} disabled={loading || clearing || importing}>
                 <Download className="w-4 h-4" />
                 导出 Netscape
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowConfirm(true)} disabled={clearing}>
+              <Button size="sm" variant="secondary" onClick={() => setShowConfirm(true)} disabled={clearing || loading || importing}>
                 <Trash2 className="w-4 h-4" />
                 清除全部
               </Button>
@@ -156,9 +177,26 @@ export function CookieManagerCard({ profileId, profileName, running, ready }: Pr
             </div>
           )}
 
-          <Table columns={columns} data={filteredCookies} rowKey="name" />
+          <Table columns={columns} data={filteredCookies} rowKey={cookie => JSON.stringify([cookie.domain, cookie.path, cookie.name])} loading={loading} />
         </div>
       )}
     </Card>
+    <Modal open={importOpen} onClose={closeImport} closable={!importing} title="导入 Cookie" width="640px" footer={<>
+      <Button variant="secondary" onClick={closeImport} disabled={importing}>取消</Button>
+      <Button onClick={() => void handleImport()} loading={importing} disabled={!ready || !importText.trim()}>导入 Cookie</Button>
+    </>}>
+      <div className="space-y-3">
+        <p className="text-sm text-[var(--color-text-secondary)]">支持 Cookie JSON 数组或 Netscape 文本，同域名、路径和名称的 Cookie 将被覆盖。操作立即生效。</p>
+        <input type="file" accept=".json,.txt" disabled={importing} aria-label="选择 Cookie 文件" onChange={async event => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (!file) return
+          if (file.size > 2 * 1024 * 1024) { toast.error('Cookie 文件不能超过 2 MB'); return }
+          try { setImportText(await file.text()) } catch { toast.error('读取 Cookie 文件失败') }
+        }} />
+        <Textarea value={importText} onChange={event => setImportText(event.target.value)} rows={12} maxLength={2 * 1024 * 1024} disabled={importing} placeholder="粘贴 Cookie JSON 或 Netscape 文本" />
+      </div>
+    </Modal>
+    </>
   )
 }

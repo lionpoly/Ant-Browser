@@ -48,6 +48,7 @@ type App struct {
 	backgroundTasks               sync.WaitGroup
 	backgroundTasksBlocked        bool
 	maintenanceMu                 sync.Mutex
+	adsPowerSessionMu             sync.Mutex
 	bridgeMu                      sync.Mutex
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex

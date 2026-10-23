@@ -24,6 +24,9 @@ func (m *Manager) ListCores() []Core {
 // SaveCore 保存内核配置（新增或更新）
 func (m *Manager) SaveCore(input CoreInput) error {
 	log := logger.New("Browser")
+	if input.FingerprintEngine != "" && input.FingerprintEngine != "cloakbrowser" && input.FingerprintEngine != "fingerprint-chromium" {
+		return fmt.Errorf("不支持的指纹参数引擎: %s", input.FingerprintEngine)
+	}
 	coreId := strings.TrimSpace(input.CoreId)
 	coreName := strings.TrimSpace(input.CoreName)
 	corePath := strings.TrimSpace(input.CorePath)
@@ -45,7 +48,7 @@ func (m *Manager) SaveCore(input CoreInput) error {
 				_ = err
 			}
 		}
-		core := Core{CoreId: coreId, CoreName: coreName, CorePath: corePath, IsDefault: input.IsDefault}
+		core := Core{FingerprintEngine: input.FingerprintEngine, CoreId: coreId, CoreName: coreName, CorePath: corePath, IsDefault: input.IsDefault}
 		if err := m.CoreDAO.Upsert(core); err != nil {
 			return err
 		}
@@ -64,6 +67,7 @@ func (m *Manager) SaveCore(input CoreInput) error {
 		}
 	}
 	if existingIndex >= 0 {
+		m.Config.Browser.Cores[existingIndex].FingerprintEngine = input.FingerprintEngine
 		m.Config.Browser.Cores[existingIndex].CoreName = coreName
 		m.Config.Browser.Cores[existingIndex].CorePath = corePath
 		if input.IsDefault {
@@ -75,10 +79,11 @@ func (m *Manager) SaveCore(input CoreInput) error {
 			coreId = uuid.NewString()
 		}
 		newCore := Core{
-			CoreId:    coreId,
-			CoreName:  coreName,
-			CorePath:  corePath,
-			IsDefault: input.IsDefault || len(m.Config.Browser.Cores) == 0,
+			FingerprintEngine: input.FingerprintEngine,
+			CoreId:            coreId,
+			CoreName:          coreName,
+			CorePath:          corePath,
+			IsDefault:         input.IsDefault || len(m.Config.Browser.Cores) == 0,
 		}
 		if newCore.IsDefault {
 			m.clearDefaultCore()

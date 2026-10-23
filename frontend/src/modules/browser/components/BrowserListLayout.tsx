@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Archive, CheckCircle, ChevronRight, ChevronUp, Edit2, LayoutGrid, List, Play, Plus, RefreshCw, Sliders, Star, Trash2, Upload, XCircle } from 'lucide-react'
+import { Archive, CheckCircle, ChevronRight, ChevronUp, Edit2, FolderOpen, LayoutGrid, List, Play, Plus, RefreshCw, Sliders, Star, Trash2, Upload, XCircle } from 'lucide-react'
 
 import { Button, Card, FormItem, Input, Modal, Switch, Table, Textarea } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
@@ -24,6 +24,7 @@ interface BrowserListHeaderProps {
   onFiltersChange: (next: InstanceFilters) => void
   onToggleHeaderCollapsed: () => void
   onRefresh: () => void
+  onOpenGroups: () => void
   onOpenSettings: () => void
   onOpenTrash: () => void
   onImportProfiles: () => void
@@ -45,6 +46,7 @@ export function BrowserListHeader({
   onFiltersChange,
   onToggleHeaderCollapsed,
   onRefresh,
+  onOpenGroups,
   onOpenSettings,
   onOpenTrash,
   onImportProfiles,
@@ -88,6 +90,9 @@ export function BrowserListHeader({
           </Button>
           <Button variant="secondary" size="sm" onClick={onRefresh}>
             <RefreshCw className="w-4 h-4" />刷新
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onOpenGroups}>
+            <FolderOpen className="w-4 h-4" />分组管理
           </Button>
           <Button variant="secondary" size="sm" onClick={onOpenSettings}>
             <Sliders className="w-4 h-4" />基础配置
@@ -279,6 +284,16 @@ export function BrowserListSettingsModal({
             rows={4}
             placeholder="启动 URL"
           />
+        </FormItem>
+        <FormItem label="启动前自动匹配 IP 时区" hint="全局生效。每次启动前通过实例实际出口查询 IP 时区并保存到实例；检查或保存失败会阻止启动。定位使用 ipwho.is，最长等待 12 秒。">
+          <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] px-3 py-2">
+            <span className="text-sm text-[var(--color-text-primary)]">启动前检查并更新时区</span>
+            <Switch
+              aria-label="启动前检查并更新时区"
+              checked={settings.autoTimezoneOnStart}
+              onChange={(checked) => onSettingsChange({ autoTimezoneOnStart: checked })}
+            />
+          </div>
         </FormItem>
         <FormItem label="轻启动模式" hint="先起空白页，实例就绪后再打开默认页面">
           <div className="flex items-center justify-between rounded-lg border border-[var(--color-border-default)] px-3 py-2">

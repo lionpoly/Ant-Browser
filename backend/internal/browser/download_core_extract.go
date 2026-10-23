@@ -246,6 +246,10 @@ func detectCommonArchiveRoot(entries []archiveEntryMeta) (string, bool) {
 			return "", false
 		}
 	}
+	// A macOS app is a bundle, not a disposable distribution directory.
+	if strings.HasSuffix(strings.ToLower(strings.TrimSuffix(rootPrefix, "/")), ".app") {
+		return "", false
+	}
 	return rootPrefix, rootPrefix != ""
 }
 
@@ -286,6 +290,9 @@ func stripSingleExtractedRoot(dest string, topLevels map[string]struct{}) error 
 	rootPath, err := safeArchiveTargetPath(dest, rootName)
 	if err != nil {
 		return err
+	}
+	if strings.HasSuffix(strings.ToLower(rootName), ".app") {
+		return nil
 	}
 	info, err := os.Stat(rootPath)
 	if err != nil || !info.IsDir() {

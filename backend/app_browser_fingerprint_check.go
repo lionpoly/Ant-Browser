@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
 	"encoding/json"
 	"fmt"
@@ -92,7 +93,7 @@ func (a *App) BrowserProfileFingerprintCheck(profileId string) (*BrowserFingerpr
 	return &BrowserFingerprintCheckResult{
 		ProfileId: profile.ProfileId,
 		Runtime:   runtimeInfo,
-		Expected:  buildBrowserFingerprintExpected(a.fingerprintCheckExpectedArgsFromProfile(profile)),
+		Expected:  a.browserFingerprintExpectedForCore(a.fingerprintCheckExpectedArgsFromProfile(profile), profile.CoreId),
 	}, nil
 }
 
@@ -297,6 +298,14 @@ func evaluateBrowserFingerprintRuntime(debugPort int) (BrowserFingerprintRuntime
 
 func buildBrowserFingerprintExpected(args []string) BrowserFingerprintExpectedInfo {
 	normalizedArgs := normalizeBrowserLanguageArgs(args)
+	locale := browserArgValue(args, "--fingerprint-locale")
+	timezone := browserArgValue(args, "--fingerprint-timezone")
+	if locale != "" {
+		normalizedArgs = append(normalizedArgs, "--lang="+locale)
+	}
+	if timezone != "" {
+		normalizedArgs = append(normalizedArgs, "--timezone="+timezone)
+	}
 	return BrowserFingerprintExpectedInfo{
 		Language:            browserArgValue(normalizedArgs, "--lang"),
 		AcceptLanguage:      browserArgValue(normalizedArgs, "--accept-lang"),
@@ -383,4 +392,19 @@ func nestedString(root map[string]any, keys ...string) (string, bool) {
 	}
 	value, ok := current.(string)
 	return value, ok
+}
+
+func buildBrowserFingerprintExpectedForEngine(args []string, engine string) BrowserFingerprintExpectedInfo {
+	result := buildBrowserFingerprintExpected(args)
+	if engine == "cloakbrowser" {
+		result.DeviceMemory = browserArgValue(args, "--fingerprint-device-memory")
+	}
+	return result
+}
+func (a *App) browserFingerprintExpectedForCore(args []string, coreID string) BrowserFingerprintExpectedInfo {
+	engine := "fingerprint-chromium"
+	if core, ok := a.resolveBrowserCoreForFingerprintReport(coreID); ok {
+		engine = browser.ResolveFingerprintEngine(core)
+	}
+	return buildBrowserFingerprintExpectedForEngine(args, engine)
 }
