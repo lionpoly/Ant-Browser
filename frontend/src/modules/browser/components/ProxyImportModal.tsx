@@ -3,6 +3,7 @@ import { Button, toast } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 import type { BrowserProxy } from '../types'
 import { fetchClashImportFromURL, saveBrowserProxies } from '../api'
+import { mergeImportedProxies } from '../utils/proxyIdentity'
 import { DIRECT_QUICK_IMPORT_TEMPLATE, buildDirectImportCandidatesFromText, parseDirectImportText } from '../pages/proxyPool/helpers'
 import {
   INITIAL_CHAIN_IMPORT_FORM,
@@ -206,7 +207,7 @@ export function ProxyImportModal({
       const sourceLastRefreshAt = isURLImport ? new Date().toISOString() : ''
       const oldSourceProxies = isURLImport
         ? existingProxies.filter(item => (item.sourceId || '').trim() === sourceID)
-        : []
+        : existingProxies
       const pickExisting = createExistingProxyPicker(oldSourceProxies)
 
       const newProxies: BrowserProxy[] = previewList.map((p) => {
@@ -227,8 +228,8 @@ export function ProxyImportModal({
         }
       })
       const allProxies = isURLImport
-        ? existingProxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies)
-        : [...existingProxies, ...newProxies]
+        ? mergeImportedProxies(existingProxies.filter(item => (item.sourceId || '').trim() !== sourceID), newProxies)
+        : mergeImportedProxies(existingProxies, newProxies)
 
       await saveBrowserProxies(allProxies)
       await onImported?.(newProxies)

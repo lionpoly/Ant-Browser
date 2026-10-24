@@ -1,4 +1,5 @@
-﻿import { useState } from 'react'
+﻿import { useRef, useState } from 'react'
+import { runProfileTrashBatch } from './browserList/profileTrashBatch'
 import { toast } from '../../../shared/components'
 import type { BrowserProfile, BrowserProfileCopyOptions, BrowserProfilePackageImportAction, BrowserProfilePackageImportPreview, BrowserProxy } from '../types'
 import { BrowserCoreEditorModal, BrowserListHeader, BrowserListSettingsModal } from '../components/BrowserListLayout'
@@ -84,10 +85,8 @@ export function BrowserListPage() {
   const [trashLoading, setTrashLoading] = useState(false)
   const [restoringId, setRestoringId] = useState('')
   const [permanentlyDeletingId, setPermanentlyDeletingId] = useState('')
-  const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ open: boolean; profile: BrowserProfile | null }>({
-    open: false,
-    profile: null,
-  })
+  const trashBusyRef = useRef(false)
+  const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ open: boolean; profiles: BrowserProfile[] }>({ open: false, profiles: [] })
 
   const openCopyModal = (profile: BrowserProfile) => {
     setCopyName(buildBrowserProfileCopyName(profile.profileName))
@@ -144,6 +143,11 @@ export function BrowserListPage() {
     updateProxiesState,
     loadProfiles,
   } = useBrowserListData({ loadCores })
+
+  const instanceCounts = profiles.reduce<Record<string, number>>((counts, profile) => {
+    if (profile.proxyId) counts[profile.proxyId] = (counts[profile.proxyId] || 0) + 1
+    return counts
+  }, {})
   const {
     runningCount,
     allTags,
@@ -434,35 +438,30 @@ export function BrowserListPage() {
     void loadTrashProfiles()
   }
 
-  const handleRestoreProfile = async (profileId: string) => {
-    setRestoringId(profileId)
+  const runTrashAction = async (ids: string[], permanent: boolean) => {
+    if (trashBusyRef.current || ids.length === 0) return
+    trashBusyRef.current = true
+    const setBusy = permanent ? setPermanentlyDeletingId : setRestoringId
+    setBusy(ids.length === 1 ? ids[0] : '__batch__')
     try {
-      await restoreBrowserProfile(profileId)
-      toast.success('实例已恢复')
+      const { succeededIds, failedIds } = await runProfileTrashBatch(ids, permanent ? permanentlyDeleteBrowserProfile : restoreBrowserProfile)
+      const label = permanent ? '彻底删除' : '恢复'
+      const succeeded = new Set(succeededIds)
+      setTrashProfiles(previous => previous.filter(profile => !succeeded.has(profile.profileId)))
+      if (succeededIds.length) toast.success(`已${label} ${succeededIds.length} 个实例`)
+      if (failedIds.length) toast.error(`${failedIds.length} 个实例${label}失败，请重试`)
+      if (permanent) setPermanentDeleteConfirm(previous => ({ ...previous, open: false }))
       await loadTrashProfiles()
-      await loadProfiles()
-    } catch (error: any) {
-      toast.error(error?.message || '恢复失败')
+      if (!permanent && succeededIds.length) await loadProfiles()
+    } catch {
+      toast.error('刷新实例列表失败，请刷新后重试')
     } finally {
-      setRestoringId('')
+      setBusy('')
+      trashBusyRef.current = false
     }
   }
 
-  const handleConfirmPermanentDelete = async () => {
-    const profile = permanentDeleteConfirm.profile
-    if (!profile) return
-    setPermanentlyDeletingId(profile.profileId)
-    try {
-      await permanentlyDeleteBrowserProfile(profile.profileId)
-      toast.success('实例已彻底删除')
-      setPermanentDeleteConfirm({ open: false, profile: null })
-      await loadTrashProfiles()
-    } catch (error: any) {
-      toast.error(error?.message || '彻底删除失败')
-    } finally {
-      setPermanentlyDeletingId('')
-    }
-  }
+  const handleConfirmPermanentDelete = () => runTrashAction(permanentDeleteConfirm.profiles.map(profile => profile.profileId), true)
 
   const openBatchDeleteConfirm = () => {
     const ids = Array.from(selectedIds)
@@ -632,6 +631,7 @@ export function BrowserListPage() {
           }
         }}
         onProxyListUpdated={updateProxiesState}
+        instanceCounts={instanceCounts}
         onProxyDeleted={handleProxyDeletedFromPicker}
         onClose={() => setProxyPickerProfile(null)}
       />
@@ -718,10 +718,10 @@ export function BrowserListPage() {
         restoringId={restoringId}
         permanentlyDeletingId={permanentlyDeletingId}
         permanentDeleteConfirm={permanentDeleteConfirm}
-        onCloseTrash={() => setTrashModalOpen(false)}
-        onRestoreProfile={(profileId) => { void handleRestoreProfile(profileId) }}
-        onOpenPermanentDelete={(profile) => setPermanentDeleteConfirm({ open: true, profile })}
-        onClosePermanentDelete={() => setPermanentDeleteConfirm({ open: false, profile: null })}
+        onCloseTrash={() => { if (!trashBusyRef.current) setTrashModalOpen(false) }}
+        onRestoreProfiles={(ids) => { void runTrashAction(ids, false) }}
+        onOpenPermanentDelete={(profiles) => { if (!trashBusyRef.current) setPermanentDeleteConfirm({ open: true, profiles }) }}
+        onClosePermanentDelete={() => { if (!trashBusyRef.current) setPermanentDeleteConfirm(previous => ({ ...previous, open: false })) }}
         onConfirmPermanentDelete={() => { void handleConfirmPermanentDelete() }}
         opError={opError}
         onCloseOpError={() => setOpError('')}

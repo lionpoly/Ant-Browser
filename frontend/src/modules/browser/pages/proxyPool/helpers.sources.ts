@@ -1,6 +1,7 @@
 import type { BrowserProxy } from '../../types'
 import type { ClashProxy, URLImportSourceMeta } from './helpers.types'
 import { nextProxyID, proxyToYaml, resolveImportedProxyName } from './helpers.clash'
+import { proxyEndpointKey } from '../../utils/proxyIdentity'
 
 export function parseTimestampMs(value: string): number {
   const trimmed = value.trim()
@@ -96,35 +97,19 @@ export function collectURLImportSources(list: BrowserProxy[]): URLImportSourceMe
   return Array.from(sourceMap.values())
 }
 export function createExistingProxyPicker(oldSourceProxies: BrowserProxy[]) {
+  const endpointMap = new Map<string, BrowserProxy[]>()
   const exactMap = new Map<string, BrowserProxy[]>()
-  const nameMap = new Map<string, BrowserProxy[]>()
-
-  oldSourceProxies.forEach((item) => {
+  oldSourceProxies.forEach(item => {
+    const endpoint = proxyEndpointKey(item.proxyConfig)
+    if (endpoint) endpointMap.set(endpoint, [...(endpointMap.get(endpoint) || []), item])
     const exactKey = `${item.proxyName}|||${item.proxyConfig}`
-    const exactList = exactMap.get(exactKey) || []
-    exactList.push(item)
-    exactMap.set(exactKey, exactList)
-
-    const nameKey = item.proxyName
-    const nameList = nameMap.get(nameKey) || []
-    nameList.push(item)
-    nameMap.set(nameKey, nameList)
+    exactMap.set(exactKey, [...(exactMap.get(exactKey) || []), item])
   })
-
   return (name: string, configText: string): BrowserProxy | null => {
-    const exactKey = `${name}|||${configText}`
-    const exactList = exactMap.get(exactKey)
-    if (exactList && exactList.length > 0) {
-      const item = exactList.shift()
-      if (item?.proxyId) return item
-    }
-
-    const nameList = nameMap.get(name)
-    if (nameList && nameList.length > 0) {
-      const item = nameList.shift()
-      if (item?.proxyId) return item
-    }
-    return null
+    const endpointList = endpointMap.get(proxyEndpointKey(configText))
+    if (endpointList?.length) return endpointList.shift() || null
+    const exactList = exactMap.get(`${name}|||${configText}`)
+    return exactList?.shift() || null
   }
 }
 

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { Copy, Download, FolderOpen, Key, Loader2, MoreHorizontal, Play, Puzzle, Repeat2, RotateCcw, Settings, Square, Trash2, Wifi } from 'lucide-react'
 
-import { Badge, Button, Card, Table } from '../../../shared/components'
+import { Badge, Button, Card, Pagination, Table } from '../../../shared/components'
 import type { TableColumn } from '../../../shared/components/Table'
 
 import type { BrowserCore, BrowserProfile, BrowserProxy, ProxySpeedTestResult } from '../types'
@@ -480,6 +480,10 @@ export function BrowserProfilesPanel({
   const allSelected = profiles.length > 0 && selectedIds.size === profiles.length
   const partiallySelected = selectedIds.size > 0 && selectedIds.size < profiles.length
   const [openMoreProfileId, setOpenMoreProfileId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const pageProfiles = profiles.slice((page - 1) * pageSize, page * pageSize)
+  useEffect(() => { setPage(Math.min(page, Math.max(1, Math.ceil(profiles.length / pageSize)))) }, [profiles.length, page, pageSize])
 
   const columns: TableColumn<BrowserProfile>[] = [
     {
@@ -627,13 +631,13 @@ export function BrowserProfilesPanel({
       ) : viewMode === 'table' ? (
         <Table
           columns={columns}
-          data={profiles}
+          data={pageProfiles}
           rowKey="profileId"
           maxHeight="none"
         />
       ) : (
         <div className="grid grid-cols-1 items-start gap-3 p-3 content-start lg:grid-cols-2 2xl:grid-cols-3">
-          {profiles.map((profile) => (
+          {pageProfiles.map((profile) => (
             <div key={profile.profileId} className="min-w-0">
               <BrowserProfileCard
                 profile={profile}
@@ -659,6 +663,7 @@ export function BrowserProfilesPanel({
           ))}
         </div>
       )}
+      <Pagination page={page} pageSize={pageSize} total={profiles.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} />
     </Card>
   )
 }

@@ -25,6 +25,7 @@ import {
 } from './helpers'
 import { appendSourceIgnoredProxyNames } from './storage'
 import { buildWebshareImportCandidates } from './helpers.webshare'
+import { mergeImportedProxies } from '../../utils/proxyIdentity'
 
 interface UseProxyImportFlowOptions {
   proxies: BrowserProxy[]
@@ -353,7 +354,7 @@ export function useProxyImportFlow({
       const sourceLastRefreshAt = isURLImport ? new Date().toISOString() : ''
       const oldSourceProxies = isURLImport
         ? proxies.filter(item => (item.sourceId || '').trim() === sourceID)
-        : []
+        : proxies
       const pickExisting = createExistingProxyPicker(oldSourceProxies)
 
       const newProxies: BrowserProxy[] = previewList.map((p) => {
@@ -374,8 +375,8 @@ export function useProxyImportFlow({
         }
       })
       const allProxies = isURLImport
-        ? proxies.filter(item => (item.sourceId || '').trim() !== sourceID).concat(newProxies)
-        : [...proxies, ...newProxies]
+        ? mergeImportedProxies(proxies.filter(item => (item.sourceId || '').trim() !== sourceID), newProxies)
+        : mergeImportedProxies(proxies, newProxies)
       await saveProxies(allProxies)
       if (isURLImport && removedPreviewProxyNames.length > 0) {
         appendSourceIgnoredProxyNames(sourceID, removedPreviewProxyNames)

@@ -19,10 +19,11 @@ export function TagFilterBar({ tags, selected, onChange }: TagFilterBarProps) {
     <div className="flex items-center gap-1.5 flex-wrap">
       <span className="text-xs text-[var(--color-text-muted)] shrink-0">标签：</span>
       <button
+        aria-pressed={isAllSelected}
         onClick={() => onChange(new Set())}
         className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
           isAllSelected
-            ? 'bg-[var(--color-accent)] text-white'
+            ? 'bg-[var(--color-accent)] text-[var(--color-text-inverse)]'
             : 'bg-[var(--color-bg-muted)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-subtle)]'
         }`}
       >
@@ -31,10 +32,11 @@ export function TagFilterBar({ tags, selected, onChange }: TagFilterBarProps) {
       {tags.map(tag => (
         <button
           key={tag}
+          aria-pressed={selected.has(tag)}
           onClick={() => toggle(tag)}
           className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
             selected.has(tag)
-              ? 'bg-[var(--color-accent)] text-white'
+              ? 'bg-[var(--color-accent)] text-[var(--color-text-inverse)]'
               : 'bg-[var(--color-bg-muted)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-subtle)]'
           }`}
         >

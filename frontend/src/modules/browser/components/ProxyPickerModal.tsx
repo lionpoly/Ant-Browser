@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, Search, Wifi, X } from 'lucide-react'
-import { ConfirmModal, toast } from '../../../shared/components'
+import { ConfirmModal, Pagination, toast } from '../../../shared/components'
 import type { BrowserProxy } from '../types'
 import { browserProxyBatchTestSpeed, browserProxyTestSpeed, fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
@@ -33,13 +33,16 @@ interface ProxyPickerModalProps {
   onProxyListUpdated?: (proxies: BrowserProxy[]) => void
   onProxyDeleted?: (deletedProxyId: string, nextProxies: BrowserProxy[]) => void
   onProxyTested?: (proxyId: string, result: SpeedResult) => void
+  instanceCounts?: Record<string, number>
 }
 
-export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', onSelect, onClose, onProxyListUpdated, onProxyDeleted, onProxyTested }: ProxyPickerModalProps) {
+export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', onSelect, onClose, onProxyListUpdated, onProxyDeleted, onProxyTested, instanceCounts = {} }: ProxyPickerModalProps) {
   const [groups, setGroups] = useState<string[]>([])
   const [allProxies, setAllProxies] = useState<BrowserProxy[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUP)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   const [loading, setLoading] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [speedMap, setSpeedMap] = useState<Record<string, SpeedResult>>({})
@@ -87,6 +90,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     if (!open) return
     setSelectedGroup(ALL_GROUP)
     setSearch('')
+    setPage(1)
     setSpeedMap({})
     setTestingIds(new Set())
     setEditingProxy(null)
@@ -143,6 +147,9 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
         displayConfig: formatProxyConfigForDisplay(proxy.proxyConfig),
       }))
   }, [selectedGroup, search, allProxies, speedMap])
+
+  const pagedProxies = displayProxies.slice((page - 1) * pageSize, page * pageSize)
+  useEffect(() => { setPage(Math.min(page, Math.max(1, Math.ceil(displayProxies.length / pageSize)))) }, [displayProxies.length, page, pageSize])
 
   const groupCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -415,13 +422,16 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
               </button>
             </div>
 
+            <div className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-2 text-[11px] text-[var(--color-text-muted)]">
+              <span className="min-w-0 flex-1">代理名称 / 配置</span><span className="w-14 shrink-0 text-center">实例数</span><span className="w-[116px] shrink-0 text-right">操作</span>
+            </div>
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-24 text-sm text-[var(--color-text-muted)]">加载中...</div>
               ) : displayProxies.length === 0 ? (
                 <div className="flex items-center justify-center h-24 text-sm text-[var(--color-text-muted)]">暂无代理</div>
               ) : (
-                displayProxies.map(item => (
+                pagedProxies.map(item => (
                   <ProxyRow
                     key={item.proxy.proxyId}
                     proxy={item.proxy}
@@ -429,6 +439,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
                     testing={testingIds.has(item.proxy.proxyId)}
                     speedResult={speedMap[item.proxy.proxyId]}
                     displayConfig={item.displayConfig}
+                    instanceCount={instanceCounts[item.proxy.proxyId] || 0}
                     onSelect={() => { onSelect(item.proxy); onClose() }}
                     onTest={e => testOne(item.proxy.proxyId, e)}
                     onEdit={e => handleEditClick(item.proxy, e)}
@@ -441,7 +452,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
         </div>
 
         <div className="px-4 py-2.5 border-t border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-          共 {displayProxies.length} 条，点击行即选中
+          <div className="flex items-center justify-between"><span>共 {displayProxies.length} 条，点击行即选中</span><Pagination page={page} pageSize={pageSize} total={displayProxies.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} /></div>
         </div>
       </div>
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { XCircle } from 'lucide-react'
 import { Button, Modal } from '../../../../shared/components'
@@ -34,10 +35,10 @@ interface BrowserListDialogsProps {
   trashLoading: boolean
   restoringId: string
   permanentlyDeletingId: string
-  permanentDeleteConfirm: { open: boolean; profile: BrowserProfile | null }
+  permanentDeleteConfirm: { open: boolean; profiles: BrowserProfile[] }
   onCloseTrash: () => void
-  onRestoreProfile: (profileId: string) => void
-  onOpenPermanentDelete: (profile: BrowserProfile) => void
+  onRestoreProfiles: (profileIds: string[]) => void
+  onOpenPermanentDelete: (profiles: BrowserProfile[]) => void
   onClosePermanentDelete: () => void
   onConfirmPermanentDelete: () => void
   opError: string
@@ -78,7 +79,7 @@ export function BrowserListDialogs({
   permanentlyDeletingId,
   permanentDeleteConfirm,
   onCloseTrash,
-  onRestoreProfile,
+  onRestoreProfiles,
   onOpenPermanentDelete,
   onClosePermanentDelete,
   onConfirmPermanentDelete,
@@ -89,6 +90,20 @@ export function BrowserListDialogs({
   onCloseProfileImport,
   onConfirmProfileImport,
 }: BrowserListDialogsProps) {
+  const [selectedTrashIds, setSelectedTrashIds] = useState<Set<string>>(new Set())
+  const trashBusy = !!restoringId || !!permanentlyDeletingId
+  const selectedTrash = trashProfiles.filter(profile => selectedTrashIds.has(profile.profileId))
+  const allTrashSelected = trashProfiles.length > 0 && selectedTrash.length === trashProfiles.length
+  useEffect(() => {
+    setSelectedTrashIds(previous => trashModalOpen
+      ? new Set(trashProfiles.filter(profile => previous.has(profile.profileId)).map(profile => profile.profileId))
+      : new Set())
+  }, [trashProfiles, trashModalOpen])
+  const toggleTrash = (id: string) => setSelectedTrashIds(previous => {
+    const next = new Set(previous)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
   const formatTime = (value?: string) => {
     if (!value) return '-'
     const date = new Date(value)
@@ -192,17 +207,33 @@ export function BrowserListDialogs({
         onClose={onCloseTrash}
         title="实例回收站"
         width="720px"
-        footer={<Button variant="secondary" onClick={onCloseTrash}>关闭</Button>}
+        closable={!trashBusy}
+        footer={<Button variant="secondary" onClick={onCloseTrash} disabled={trashBusy}>关闭</Button>}
       >
         {trashLoading ? (
           <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">加载中...</div>
         ) : trashProfiles.length === 0 ? (
           <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">回收站为空</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                <input type="checkbox" aria-label="全选回收站实例" checked={allTrashSelected} disabled={trashBusy}
+                  ref={element => { if (element) element.indeterminate = selectedTrash.length > 0 && !allTrashSelected }}
+                  onChange={() => setSelectedTrashIds(allTrashSelected ? new Set() : new Set(trashProfiles.map(profile => profile.profileId)))}
+                  className="h-4 w-4 accent-[var(--color-accent)]" />
+                全选
+              </label>
+              <span className="mr-auto text-xs text-[var(--color-text-muted)]">已选 {selectedTrash.length} / {trashProfiles.length}</span>
+              <Button size="sm" variant="secondary" disabled={!selectedTrash.length || trashBusy} onClick={() => setSelectedTrashIds(new Set())}>取消选择</Button>
+              <Button size="sm" disabled={!selectedTrash.length || trashBusy} loading={restoringId === '__batch__'} onClick={() => onRestoreProfiles(selectedTrash.map(profile => profile.profileId))}>恢复所选</Button>
+              <Button size="sm" variant="danger" disabled={!selectedTrash.length || trashBusy} onClick={() => onOpenPermanentDelete(selectedTrash)}>彻底删除所选</Button>
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border-default)] text-left text-xs text-[var(--color-text-muted)]">
+                  <th className="w-8"><span className="sr-only">选择</span></th>
                   <th className="py-2 pr-3 font-medium">实例</th>
                   <th className="py-2 pr-3 font-medium">删除时间</th>
                   <th className="py-2 pr-3 font-medium">自动清理</th>
@@ -212,6 +243,7 @@ export function BrowserListDialogs({
               <tbody>
                 {trashProfiles.map((profile) => (
                   <tr key={profile.profileId} className="border-b border-[var(--color-border-muted)] last:border-0">
+                    <td className="pr-3"><input type="checkbox" aria-label={`选择 ${profile.profileName || '未命名实例'}`} checked={selectedTrashIds.has(profile.profileId)} disabled={trashBusy} onChange={() => toggleTrash(profile.profileId)} className="h-4 w-4 accent-[var(--color-accent)]" /></td>
                     <td className="py-3 pr-3 text-[var(--color-text-primary)]">{profile.profileName || '未命名实例'}</td>
                     <td className="py-3 pr-3 text-[var(--color-text-secondary)]">{formatTime(profile.deletedAt)}</td>
                     <td className="py-3 pr-3 text-[var(--color-text-secondary)]">{formatExpireTime(profile.deletedAt)}</td>
@@ -220,18 +252,18 @@ export function BrowserListDialogs({
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => onRestoreProfile(profile.profileId)}
+                          onClick={() => onRestoreProfiles([profile.profileId])}
                           loading={restoringId === profile.profileId}
-                          disabled={!!permanentlyDeletingId}
+                          disabled={trashBusy}
                         >
                           恢复
                         </Button>
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => onOpenPermanentDelete(profile)}
+                          onClick={() => onOpenPermanentDelete([profile])}
                           loading={permanentlyDeletingId === profile.profileId}
-                          disabled={!!restoringId}
+                          disabled={trashBusy}
                         >
                           彻底删除
                         </Button>
@@ -241,6 +273,7 @@ export function BrowserListDialogs({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </Modal>
@@ -249,16 +282,19 @@ export function BrowserListDialogs({
         open={permanentDeleteConfirm.open}
         onClose={onClosePermanentDelete}
         title="彻底删除实例"
+        closable={!trashBusy}
         width="420px"
         footer={
           <>
-            <Button variant="secondary" onClick={onClosePermanentDelete} disabled={!!permanentlyDeletingId}>取消</Button>
+            <Button variant="secondary" onClick={onClosePermanentDelete} disabled={trashBusy}>取消</Button>
             <Button variant="danger" onClick={onConfirmPermanentDelete} loading={!!permanentlyDeletingId}>彻底删除</Button>
           </>
         }
       >
         <div className="space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <p>确定彻底删除实例「{permanentDeleteConfirm.profile?.profileName || '未命名实例'}」？</p>
+          <p>{permanentDeleteConfirm.profiles.length === 1
+            ? `确定彻底删除实例「${permanentDeleteConfirm.profiles[0].profileName || '未命名实例'}」？`
+            : `确定彻底删除选中的 ${permanentDeleteConfirm.profiles.length} 个实例？`}</p>
           <p className="text-red-500">这会删除配置、浏览器用户数据、快照、快捷码和插件绑定，删除后不可恢复。</p>
         </div>
       </Modal>

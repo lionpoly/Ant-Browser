@@ -53,6 +53,8 @@ function compareByColumn(
       return compareText(a.server || '', b.server || '')
     case 'port':
       return (a.port || 0) - (b.port || 0)
+    case 'instanceCount':
+      return (a.instanceCount || 0) - (b.instanceCount || 0)
     case 'latency': {
       const [rankA, valA] = getLatencySortTuple(latencyMap, a.proxyId)
       const [rankB, valB] = getLatencySortTuple(latencyMap, b.proxyId)

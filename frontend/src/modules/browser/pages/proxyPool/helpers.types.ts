@@ -149,6 +149,7 @@ export interface ProxyDisplayInfo {
   server: string
   port: number
   latencyMs?: number
+  instanceCount?: number
 }
 
 export interface URLImportSourceMeta {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
 import type { BrowserProxy, ProxyIPHealthResult } from '../types'
-import { fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
+import { fetchBrowserProxies, fetchBrowserProfiles, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
@@ -175,7 +175,10 @@ export function ProxyPoolPage() {
       ])
       const finalList = await ensureBuiltinProxies(list)
       setProxies(finalList)
-      setDisplayList(toDisplayList(finalList))
+      const profiles = await fetchBrowserProfiles()
+      const counts: Record<string, number> = {}
+      profiles.forEach(profile => { if (profile.proxyId) counts[profile.proxyId] = (counts[profile.proxyId] || 0) + 1 })
+      setDisplayList(toDisplayList(finalList).map(proxy => ({ ...proxy, instanceCount: counts[proxy.proxyId] || 0 })))
       setGroups(groupList)
 
       setLatencyMap(prev => {

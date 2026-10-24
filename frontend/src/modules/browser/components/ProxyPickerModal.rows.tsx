@@ -24,6 +24,7 @@ interface ProxyRowProps {
   testing: boolean
   speedResult?: SpeedResult
   displayConfig: string
+  instanceCount: number
   onSelect: () => void
   onTest: (e: React.MouseEvent) => void
   onEdit: (e: React.MouseEvent) => void
@@ -39,7 +40,7 @@ function SpeedBadge({ testing, result }: { testing: boolean; result?: SpeedResul
   return <span className={`text-xs font-medium shrink-0 whitespace-nowrap ${color}`}>{result.latencyMs}ms{suffix}</span>
 }
 
-export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
+export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, instanceCount, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
   const isDirect = proxy.proxyId === DIRECT_PROXY_ID
   const disableDelete = isDirect
 
@@ -59,6 +60,7 @@ export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig,
           {displayConfig}
         </div>
       </div>
+      <div className="w-14 shrink-0 text-center text-xs text-[var(--color-text-secondary)]" title="使用该代理的实例数">{instanceCount}</div>
       <SpeedBadge testing={testing} result={speedResult} />
       <button
         onClick={onTest}
