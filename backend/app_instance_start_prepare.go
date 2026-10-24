@@ -336,6 +336,11 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 		)
 	}
 
+	if err := a.ensureAdsPowerSessionRetention(profile, userDataDir); err != nil {
+		profile.LastError = err.Error()
+		return nil, nil, nil, "", "", err
+	}
+
 	if !profileRestoreLastSession(profile, a.config) {
 		if err := clearBrowserSessionRestoreData(userDataDir); err != nil {
 			if terminated, terminateErr := terminateBrowserProcessesByUserDataDir(userDataDir, 5*time.Second); terminateErr == nil && terminated {

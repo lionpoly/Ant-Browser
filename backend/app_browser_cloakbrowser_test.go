@@ -121,7 +121,7 @@ func TestAdsPowerUnreadablePendingDefersStartupNavigation(t *testing.T) {
 	app := NewApp(root)
 	app.config = cfg
 	app.browserMgr = browser.NewManager(cfg, root)
-	profile := &browser.Profile{ProfileId: "pending", CoreId: "core"}
+	profile := &browser.Profile{ProfileId: "pending", CoreId: "core", RestoreLastSession: browser.RestoreLastSessionEnabled}
 	dir := filepath.Join(cfg.Browser.UserDataRoot, profile.ProfileId, ".ant-import")
 	os.MkdirAll(dir, 0700)
 	os.WriteFile(filepath.Join(dir, "adspower-pending.json"), []byte(`{"cookies":[],"tabs":[]}`), 0600)

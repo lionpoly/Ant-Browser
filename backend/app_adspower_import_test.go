@@ -116,6 +116,10 @@ func TestAdsPowerImportUsesConflictAndStagingPipeline(t *testing.T) {
 	if err = db.GetConn().QueryRow(`SELECT profile_id,profile_name,proxy_config,group_id FROM browser_profiles`).Scan(&id, &name, &proxy, &group); err != nil || name != "合成实例" || proxy != "http://user:example@localhost:8080" || group == "" {
 		t.Fatal("persisted mapping failed")
 	}
+	var restoreMode string
+	if err = db.GetConn().QueryRow(`SELECT restore_last_session FROM browser_profiles WHERE profile_id = ?`, id).Scan(&restoreMode); err != nil || restoreMode != browser.RestoreLastSessionEnabled {
+		t.Fatal("imported session retention setting did not survive database import")
+	}
 	metadata := filepath.Join(cfg.Browser.UserDataRoot, id, adsPowerMetadataPath)
 	b, err := os.ReadFile(metadata)
 	if err != nil || !bytes.Contains(b, []byte("example-user")) {

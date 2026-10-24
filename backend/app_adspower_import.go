@@ -436,6 +436,8 @@ func buildAdsPowerContents(rows []map[string]string) (*profilePackageContents, e
 			name = "AdsPower " + suffix
 		}
 		p := browser.Profile{ProfileId: id, ProfileName: name, Tags: adsPowerList(r["tags"]), FingerprintArgs: []string{}, LaunchArgs: []string{}}
+		// Native session restoration retains session cookies and imported tabs on reopen.
+		p.RestoreLastSession = browser.RestoreLastSessionEnabled
 		proxy, err := adsPowerProxy(r)
 		if err != nil {
 			return nil, fmt.Errorf("AdsPower 第 %d 条记录：%w", i+1, err)
