@@ -11,11 +11,24 @@ import (
 	"time"
 )
 
-func doConcurrentDownload(ctx context.Context, client *http.Client, targetUrl string, tempFile *os.File, sendEvent func(string, int, string)) error {
+func ClientWithCloakRedirectPolicy(client *http.Client, headers http.Header) *http.Client {
+	if client == nil || headers.Get("Authorization") == "" {
+		return client
+	}
+	clone := *client
+	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &clone
+}
+
+func doConcurrentDownload(ctx context.Context, client *http.Client, targetUrl string, headers http.Header, tempFile *os.File, sendEvent func(string, int, string)) error {
+	client = ClientWithCloakRedirectPolicy(client, headers)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetUrl, nil)
 	if err != nil {
 		return err
 	}
+	copyRequestHeaders(req.Header, headers)
 	req.Header.Set("Range", "bytes=0-0")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -43,7 +56,7 @@ func doConcurrentDownload(ctx context.Context, client *http.Client, targetUrl st
 
 	if totalSize <= 0 || !supportRange {
 		sendEvent("downloading", 0, "服务器不支持多线程，回退至单流下载...")
-		return doSingleThreadDownload(ctx, client, targetUrl, tempFile, totalSize, sendEvent)
+		return doSingleThreadDownload(ctx, client, targetUrl, headers, tempFile, totalSize, sendEvent)
 	}
 
 	sendEvent("downloading", 0, fmt.Sprintf("支持多线程分片下载，总大小 %.2f MB", float64(totalSize)/1024/1024))
@@ -86,6 +99,7 @@ func doConcurrentDownload(ctx context.Context, client *http.Client, targetUrl st
 					mu.Unlock()
 					return
 				}
+				copyRequestHeaders(req.Header, headers)
 				req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 				pResp, err := client.Do(req)
 				if err != nil {
@@ -141,11 +155,12 @@ func doConcurrentDownload(ctx context.Context, client *http.Client, targetUrl st
 	return downloadErr
 }
 
-func doSingleThreadDownload(ctx context.Context, client *http.Client, targetUrl string, tempFile *os.File, totalSize int64, sendEvent func(string, int, string)) error {
+func doSingleThreadDownload(ctx context.Context, client *http.Client, targetUrl string, headers http.Header, tempFile *os.File, totalSize int64, sendEvent func(string, int, string)) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetUrl, nil)
 	if err != nil {
 		return err
 	}
+	copyRequestHeaders(req.Header, headers)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -178,4 +193,12 @@ func doSingleThreadDownload(ctx context.Context, client *http.Client, targetUrl 
 	buf := make([]byte, 1024*1024)
 	_, err = io.CopyBuffer(pw, resp.Body, buf)
 	return err
+}
+
+func copyRequestHeaders(dst, src http.Header) {
+	for key, values := range src {
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
 }

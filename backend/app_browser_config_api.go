@@ -317,25 +317,30 @@ func (a *App) relativeCorePathIfPossible(absDir string) string {
 }
 
 // BrowserCoreDownload 在线下载并自动解压配置内核
-func (a *App) BrowserCoreDownload(coreName, url, proxyConfig string) error {
+func (a *App) BrowserCoreDownload(coreName, url, proxyConfig, licenseKey string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	if a.browserMgr == nil {
 		return fmt.Errorf("浏览器管理器未初始化")
 	}
 	return a.startBackgroundTask(func(ctx context.Context) {
-		a.browserMgr.DownloadAndExtractCore(ctx, coreName, url, proxyConfig)
+		a.browserMgr.DownloadAndExtractCore(ctx, coreName, url, proxyConfig, licenseKey)
 	})
 }
 
 // BrowserCoreRedownload 重新下载并替换指定内核目录
-func (a *App) BrowserCoreRedownload(coreId, url, proxyConfig string) error {
+func (a *App) BrowserCoreRedownload(coreId, url, proxyConfig, licenseKey string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	if a.browserMgr == nil {
 		return fmt.Errorf("浏览器管理器未初始化")
 	}
 	return a.startBackgroundTask(func(ctx context.Context) {
-		a.browserMgr.RedownloadCore(ctx, coreId, url, proxyConfig)
+		a.browserMgr.RedownloadCore(ctx, coreId, url, proxyConfig, licenseKey)
 	})
+}
+
+// BrowserCloakBrowserLicenseSave repairs runtime authorization without downloading again.
+func (a *App) BrowserCloakBrowserLicenseSave(licenseKey string) error {
+	return browser.SaveCloakBrowserLicenseKey(licenseKey)
 }

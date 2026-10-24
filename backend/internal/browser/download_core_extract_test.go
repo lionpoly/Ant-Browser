@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -46,6 +47,26 @@ func TestExtractCoreArchiveStillStripsDistributionDirectory(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestExtractCoreArchiveDetectsGzipTarWithoutFilenameExtension(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "download_no_extension")
+	writeCoreTestArchive(t, archive, ".tar.gz", map[string]string{
+		"distribution/Chromium.app/Contents/MacOS/Chromium": "synthetic executable",
+	})
+	dest := t.TempDir()
+	if err := extractCoreArchiveAndStripRoot(archive, dest, func(int, string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "Chromium.app", "Contents", "MacOS", "Chromium")); err != nil {
+		t.Fatalf("gzip tar without extension was not extracted: %v", err)
+	}
+}
+
+func TestCoreArchiveTempPatternPreservesDMGExtension(t *testing.T) {
+	if got := coreArchiveTempPattern("https://example.com/ungoogled-chromium_142.0.7444.175-1.1_macos.dmg"); got != "download_*.dmg" {
+		t.Fatalf("temp pattern = %q, want download_*.dmg", got)
 	}
 }
 
@@ -96,4 +117,67 @@ func TestStripAppRootStillValidatesPath(t *testing.T) {
 			t.Fatalf("accepted escaping app root %s", root)
 		}
 	}
+}
+
+func TestDMGFormatTakesPriorityOverCompressedPayloadHeader(t *testing.T) {
+	// UDIF disk images may begin with compressed disk blocks. This release's
+	// first bytes are BZh9, but its final 512-byte block identifies it as DMG.
+	for _, name := range []string{"ungoogled-chromium_macos.dmg", "download_no_extension"} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), name)
+			data := make([]byte, 1024)
+			copy(data, "BZh91AY&SY")
+			copy(data[len(data)-512:], "koly")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := detectCoreArchiveFormat(path)
+			if err != nil || got != coreArchiveDMG {
+				t.Fatalf("format = %q, err = %v; want dmg", got, err)
+			}
+		})
+	}
+}
+
+// Opt-in regression for real publisher DMGs; never fetches or launches a browser.
+func TestExtractRealCoreDMG(t *testing.T) {
+	archive := os.Getenv("ANT_BROWSER_TEST_DMG")
+	if archive == "" || runtime.GOOS != "darwin" {
+		t.Skip("set ANT_BROWSER_TEST_DMG on macOS to verify a real DMG")
+	}
+	format, err := detectCoreArchiveFormat(archive)
+	if err != nil || format != coreArchiveDMG {
+		t.Fatalf("format = %q, err = %v; want dmg", format, err)
+	}
+	dest := t.TempDir()
+	if err := extractCoreArchiveAndStripRoot(archive, dest, func(int, string) {}); err != nil {
+		t.Fatal(err)
+	}
+	exe, _, ok := FindCoreExecutable(dest)
+	if !ok {
+		t.Fatal("no browser executable in extracted DMG")
+	}
+	info, err := os.Stat(exe)
+	if err != nil || info.Mode().Perm()&0111 == 0 {
+		t.Fatal("extracted browser is not executable")
+	}
+	// Framework symlinks must resolve inside the copied bundle rather than depend
+	// on the image remaining mounted.
+	links := 0
+	err = filepath.WalkDir(filepath.Dir(filepath.Dir(exe)), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			links++
+			if _, err := os.Stat(path); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("broken app bundle link after unmount: %v", err)
+	}
+	t.Logf("extracted browser executable %s; verified %d bundle symlinks", filepath.Base(exe), links)
 }

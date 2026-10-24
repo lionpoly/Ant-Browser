@@ -16,7 +16,7 @@ import (
 )
 
 // DownloadAndExtractCore 执行异步下载解压并在过程中发送事件
-func (m *Manager) DownloadAndExtractCore(ctx context.Context, coreName string, targetUrl string, proxyConfig string) {
+func (m *Manager) DownloadAndExtractCore(ctx context.Context, coreName string, targetUrl string, proxyConfig string, licenseKey string) {
 	coreName = strings.TrimSpace(coreName)
 	for _, core := range m.ListCores() {
 		if strings.EqualFold(core.CoreName, coreName) || filepath.Base(core.CorePath) == coreName {
@@ -26,15 +26,15 @@ func (m *Manager) DownloadAndExtractCore(ctx context.Context, coreName string, t
 				CoreName:          core.CoreName,
 				CorePath:          core.CorePath,
 				IsDefault:         core.IsDefault,
-			}, targetUrl, proxyConfig, false)
+			}, targetUrl, proxyConfig, licenseKey, false)
 			return
 		}
 	}
-	m.downloadAndExtractCore(ctx, CoreInput{CoreName: coreName}, targetUrl, proxyConfig, false)
+	m.downloadAndExtractCore(ctx, CoreInput{CoreName: coreName}, targetUrl, proxyConfig, licenseKey, false)
 }
 
 // RedownloadCore 重新下载指定内核，验证成功后替换原目录并保留原配置。
-func (m *Manager) RedownloadCore(ctx context.Context, coreId string, targetUrl string, proxyConfig string) {
+func (m *Manager) RedownloadCore(ctx context.Context, coreId string, targetUrl string, proxyConfig string, licenseKey string) {
 	core, ok := m.GetCore(coreId)
 	if !ok {
 		m.emitRuntimeEvent(ctx, "download:progress", DownloadProgress{Phase: "error", Progress: 0, Message: "内核不存在"})
@@ -46,10 +46,10 @@ func (m *Manager) RedownloadCore(ctx context.Context, coreId string, targetUrl s
 		CoreName:          core.CoreName,
 		CorePath:          core.CorePath,
 		IsDefault:         core.IsDefault,
-	}, targetUrl, proxyConfig, true)
+	}, targetUrl, proxyConfig, licenseKey, true)
 }
 
-func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInput, targetUrl string, proxyConfig string, replaceExisting bool) {
+func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInput, targetUrl string, proxyConfig string, licenseKey string, replaceExisting bool) {
 	log := logger.New("Browser")
 	t := time.Now()
 
@@ -153,7 +153,8 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 
 	sendEvent("downloading", 0, "开始分析下载链接(检测多线程支持)...")
 
-	err = doConcurrentDownload(ctx, client, targetUrl, tempFile, sendEvent)
+	headers := cloakBrowserDownloadHeaders(targetUrl, licenseKey)
+	err = doConcurrentDownload(ctx, client, targetUrl, headers, tempFile, sendEvent)
 	if err != nil {
 		sendEvent("error", 0, "下载失败: "+err.Error())
 		return
@@ -233,6 +234,14 @@ func (m *Manager) downloadAndExtractCore(ctx context.Context, coreInput CoreInpu
 	if err := m.SaveCore(coreToSave); err != nil {
 		sendEvent("error", 0, "保存配置入库失败: "+err.Error())
 		return
+	}
+	// Do not replace a working shared credential when a download is rejected,
+	// fails authentication, or cannot be verified/installed.
+	if IsCloakBrowserKeyedDownloadURL(targetUrl) && strings.TrimSpace(licenseKey) != "" {
+		if err := SaveCloakBrowserLicenseKey(licenseKey); err != nil {
+			sendEvent("error", 0, "内核已安装，但启动授权保存失败，请点击“保存启动授权”重试: "+err.Error())
+			return
+		}
 	}
 
 	if replaceExisting && strings.TrimSpace(coreInput.CoreId) != "" {

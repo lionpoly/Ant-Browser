@@ -27,17 +27,46 @@ func (e *browserStartupExitError) Detail() string {
 	lines := strings.Split(strings.TrimSpace(e.stderrTail), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
-		if line != "" {
+		if line != "" && !isBrowserInformationalStderrLine(line) {
 			return line
 		}
 	}
 	return ""
 }
 
+func isBrowserInformationalStderrLine(line string) bool {
+	return strings.Contains(line, "DevTools listening on ")
+}
+
 func newBrowserStartupExitError(result browserProcessExitResult) error {
 	return &browserStartupExitError{
 		exitErr:    result.Err,
 		stderrTail: result.StderrTail,
+	}
+}
+
+// Only call this for a core identified as CloakBrowser: other Chromium builds
+// may assign different meanings to these exit codes.
+func describeCloakBrowserLicenseFailure(err error) string {
+	var startupErr *browserStartupExitError
+	if !errors.As(err, &startupErr) {
+		return ""
+	}
+	var exitErr interface{ ExitCode() int }
+	if !errors.As(startupErr.exitErr, &exitErr) {
+		return ""
+	}
+	switch exitErr.ExitCode() {
+	case 76:
+		return "实例启动失败：CloakBrowser 授权并发数已达上限（exit status 76）。请关闭其他使用该授权的实例后重试。"
+	case 77:
+		return "实例启动失败：CloakBrowser 启动授权缺失、无效或已过期（exit status 77）。请在内核管理 → 下载内核 → CloakBrowser 中填写有效 Key，点击“保存启动授权”后重试，无需重新下载内核。"
+	case 78:
+		return "实例启动失败：CloakBrowser 无法连接许可证服务器（exit status 78）。请检查网络连接后重试。"
+	case 79:
+		return "实例启动失败：CloakBrowser 本机配置异常（exit status 79）。请检查 ~/.cloakbrowser 目录是否可写，以及 --license-route 参数是否有效。"
+	default:
+		return ""
 	}
 }
 
@@ -90,4 +119,13 @@ func describeBrowserReadyFailure(chromeBinaryPath string, debugPort int, timeout
 		return fmt.Sprintf("实例启动失败：浏览器进程在完成就绪前退出。可执行文件：%s。请检查内核文件是否完整、启动参数是否正确，或是否被安全软件拦截。", chromeBinaryPath)
 	}
 	return describeBrowserReadyTimeout(debugPort, timeout)
+}
+
+func describeBrowserReadyFailureForEngine(engine, chromeBinaryPath string, debugPort int, timeout time.Duration, err error) string {
+	if engine == "cloakbrowser" {
+		if message := describeCloakBrowserLicenseFailure(err); message != "" {
+			return message
+		}
+	}
+	return describeBrowserReadyFailure(chromeBinaryPath, debugPort, timeout, err)
 }

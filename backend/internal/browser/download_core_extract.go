@@ -8,10 +8,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ulikunitz/xz"
+)
+
+type coreArchiveFormat string
+
+const (
+	coreArchiveZip    coreArchiveFormat = "zip"
+	coreArchiveTar    coreArchiveFormat = "tar"
+	coreArchiveTarGz  coreArchiveFormat = "tar.gz"
+	coreArchiveTarXz  coreArchiveFormat = "tar.xz"
+	coreArchiveTarBz2 coreArchiveFormat = "tar.bz2"
+	coreArchiveDMG    coreArchiveFormat = "dmg"
 )
 
 type archiveEntryMeta struct {
@@ -51,17 +64,188 @@ func filepathFromURLPath(raw string) (string, error) {
 }
 
 func extractCoreArchiveAndStripRoot(archivePath, dest string, progressCb func(int, string)) error {
+	format, err := detectCoreArchiveFormat(archivePath)
+	if err != nil {
+		return err
+	}
+	switch format {
+	case coreArchiveZip:
+		return extractZipArchiveAndStripRoot(archivePath, dest, progressCb)
+	case coreArchiveTar, coreArchiveTarGz, coreArchiveTarXz, coreArchiveTarBz2:
+		return extractTarArchiveAndStripRoot(archivePath, dest, progressCb)
+	case coreArchiveDMG:
+		return extractDMGArchiveAndStripRoot(archivePath, dest, progressCb)
+	}
+	return fmt.Errorf("不支持的内核安装包格式")
+}
+
+func detectCoreArchiveFormat(archivePath string) (coreArchiveFormat, error) {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	// UDIF disk images identify their container in the final 512-byte block.
+	// Their first disk block can start with BZh (or another compression header),
+	// which describes the payload rather than a compressed TAR container.
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if info.Size() >= 512 {
+		var signature [4]byte
+		if _, err := file.ReadAt(signature[:], info.Size()-512); err != nil {
+			return "", err
+		}
+		if string(signature[:]) == "koly" {
+			return coreArchiveDMG, nil
+		}
+	}
+	header := make([]byte, 512)
+	n, err := io.ReadFull(file, header)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return "", err
+	}
+	header = header[:n]
+	if len(header) >= 4 && string(header[:4]) == "PK\x03\x04" || len(header) >= 4 && string(header[:4]) == "PK\x05\x06" || len(header) >= 4 && string(header[:4]) == "PK\x07\x08" {
+		return coreArchiveZip, nil
+	}
+	if len(header) >= 6 && string(header[:6]) == "\x1f\x8b\x08\x00" || len(header) >= 2 && header[0] == 0x1f && header[1] == 0x8b {
+		return coreArchiveTarGz, nil
+	}
+	if len(header) >= 6 && string(header[:6]) == "\xfd7zXZ\x00" {
+		return coreArchiveTarXz, nil
+	}
+	if len(header) >= 3 && string(header[:3]) == "BZh" {
+		return coreArchiveTarBz2, nil
+	}
+	if len(header) >= 262 && string(header[257:262]) == "ustar" {
+		return coreArchiveTar, nil
+	}
 	lower := strings.ToLower(archivePath)
 	if strings.HasSuffix(lower, ".zip") {
-		return extractZipArchiveAndStripRoot(archivePath, dest, progressCb)
+		return coreArchiveZip, nil
 	}
-	if isTarArchivePath(lower) {
-		return extractTarArchiveAndStripRoot(archivePath, dest, progressCb)
+	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+		return coreArchiveTarGz, nil
 	}
-	if err := extractZipArchiveAndStripRoot(archivePath, dest, progressCb); err == nil {
+	if strings.HasSuffix(lower, ".tar.xz") || strings.HasSuffix(lower, ".txz") {
+		return coreArchiveTarXz, nil
+	}
+	if strings.HasSuffix(lower, ".tar.bz2") || strings.HasSuffix(lower, ".tbz2") {
+		return coreArchiveTarBz2, nil
+	}
+	if strings.HasSuffix(lower, ".tar") {
+		return coreArchiveTar, nil
+	}
+	if strings.HasSuffix(lower, ".dmg") {
+		return coreArchiveDMG, nil
+	}
+	return "", fmt.Errorf("无法识别内核安装包格式")
+}
+
+func extractDMGArchiveAndStripRoot(archivePath, dest string, progressCb func(int, string)) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("DMG 内核包只能在 macOS 上处理")
+	}
+	mountDir, err := os.MkdirTemp("", "ant-browser-dmg-")
+	if err != nil {
+		return fmt.Errorf("创建 DMG 挂载目录失败: %w", err)
+	}
+	defer os.RemoveAll(mountDir)
+	attach := exec.Command("hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint", mountDir, archivePath)
+	if output, err := attach.CombinedOutput(); err != nil {
+		return fmt.Errorf("挂载 DMG 失败: %s", strings.TrimSpace(string(output)))
+	}
+	defer func() {
+		_ = exec.Command("hdiutil", "detach", "-force", mountDir).Run()
+	}()
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(mountDir)
+	if err != nil {
+		return err
+	}
+	progressCb(10, "DMG 已挂载，正在复制浏览器文件...")
+	for _, entry := range entries {
+		if entry.Name() == ".Trashes" || entry.Name() == ".fseventsd" || entry.Name() == ".DS_Store" || entry.Name() == ".background" || entry.Name() == "Applications" {
+			continue
+		}
+		if err := copyCorePath(filepath.Join(mountDir, entry.Name()), filepath.Join(dest, entry.Name()), mountDir); err != nil {
+			return err
+		}
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("空的 DMG 内核包")
+	}
+	progressCb(100, "DMG 解压完成！")
+	return nil
+}
+
+func copyCorePath(sourcePath, targetPath, sourceRoot string) error {
+	info, err := os.Lstat(sourcePath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(targetPath, info.Mode().Perm()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(sourcePath)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := copyCorePath(filepath.Join(sourcePath, entry.Name()), filepath.Join(targetPath, entry.Name()), sourceRoot); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
-	return extractTarArchiveAndStripRoot(archivePath, dest, progressCb)
+	if info.Mode()&os.ModeSymlink != 0 {
+		link, err := os.Readlink(sourcePath)
+		if err != nil {
+			return err
+		}
+		if filepath.IsAbs(link) {
+			return fmt.Errorf("DMG 内含指向外部路径的符号链接: %s", sourcePath)
+		}
+		resolved, err := filepath.Abs(filepath.Join(filepath.Dir(sourcePath), link))
+		if err != nil {
+			return err
+		}
+		root, err := filepath.Abs(sourceRoot)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, resolved)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("DMG 内含逃逸安装目录的符号链接: %s", sourcePath)
+		}
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			return err
+		}
+		return os.Symlink(link, targetPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return err
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	target, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(target, source)
+	closeErr := target.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func ExtractCoreArchiveAndStripRootForImport(archivePath, dest string, progressCb func(int, string)) error {
@@ -194,20 +378,23 @@ func extractTarArchiveAndStripRoot(archivePath, dest string, progressCb func(int
 }
 
 func tarStreamReader(archivePath string, file *os.File) (io.Reader, func(), error) {
-	lower := strings.ToLower(archivePath)
-	switch {
-	case strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz"):
+	format, err := detectCoreArchiveFormat(archivePath)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	switch format {
+	case coreArchiveTarGz:
 		reader, err := gzip.NewReader(file)
 		if err != nil {
 			return nil, func() {}, err
 		}
 		return reader, func() { _ = reader.Close() }, nil
-	case strings.HasSuffix(lower, ".tar.xz") || strings.HasSuffix(lower, ".txz"):
+	case coreArchiveTarXz:
 		reader, err := xz.NewReader(file)
 		return reader, func() {}, err
-	case strings.HasSuffix(lower, ".tar.bz2") || strings.HasSuffix(lower, ".tbz2"):
+	case coreArchiveTarBz2:
 		return bzip2.NewReader(file), func() {}, nil
-	case strings.HasSuffix(lower, ".tar"):
+	case coreArchiveTar:
 		return file, func() {}, nil
 	default:
 		return file, func() {}, nil
@@ -227,7 +414,7 @@ func isTarArchivePath(path string) bool {
 }
 
 func coreArchiveSuffixes() []string {
-	return []string{".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".tbz2", ".zip", ".tar"}
+	return []string{".tar.gz", ".tar.xz", ".tar.bz2", ".tgz", ".txz", ".tbz2", ".zip", ".tar", ".dmg"}
 }
 
 func detectCommonArchiveRoot(entries []archiveEntryMeta) (string, bool) {

@@ -35,6 +35,7 @@ export interface CoreDownloadForm {
   url: string
   proxyMode: string
   proxyId: string
+  licenseKey?: string
   mode?: 'download' | 'redownload'
 }
 

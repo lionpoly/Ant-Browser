@@ -449,6 +449,38 @@ export namespace backend {
 	        this.failedList = source["failedList"];
 	    }
 	}
+	export class BrowserCloakBrowserVersionRequest {
+	    licenseKey: string;
+	    proxyConfig?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new BrowserCloakBrowserVersionRequest(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.licenseKey = source["licenseKey"];
+	        this.proxyConfig = source["proxyConfig"];
+	    }
+	}
+	export class BrowserCloakBrowserVersionResult {
+	    version: string;
+	    platform: string;
+	    downloadUrl: string;
+	    message: string;
+
+	    static createFrom(source: any = {}) {
+	        return new BrowserCloakBrowserVersionResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.platform = source["platform"];
+	        this.downloadUrl = source["downloadUrl"];
+	        this.message = source["message"];
+	    }
+	}
 	export class BrowserExtensionManualDownloadFile {
 	    fileName: string;
 	    filePath: string;

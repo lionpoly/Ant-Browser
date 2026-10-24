@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -22,6 +23,32 @@ const cloakBrowserSigningKey = "MKFKwIhUcKWq5xTuNA0Ovg99njcDEcEJvmWYYhApvaU="
 
 var cloakBrowserVersion = regexp.MustCompile(`^chromium-v([0-9]+(?:\.[0-9]+){3,4})$`)
 var cloakBrowserAsset = regexp.MustCompile(`^cloakbrowser-(?:windows-x64\.zip|(?:linux|darwin)-(?:x64|arm64)\.tar\.gz)$`)
+var cloakBrowserProVersion = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+){3,4}$`)
+
+func cloakBrowserDownloadHeaders(rawURL, licenseKey string) http.Header {
+	headers := make(http.Header)
+	if strings.TrimSpace(licenseKey) == "" {
+		return headers
+	}
+	if !IsCloakBrowserKeyedDownloadURL(rawURL) {
+		return headers
+	}
+	headers.Set("Authorization", "Bearer "+strings.TrimSpace(licenseKey))
+	headers.Set("X-Platform", cloakBrowserPlatformTag())
+	return headers
+}
+
+func cloakBrowserPlatformTag() string {
+	platform := runtime.GOOS
+	arch := runtime.GOARCH
+	if platform == "windows" {
+		return "windows-x64"
+	}
+	if arch == "amd64" {
+		arch = "x64"
+	}
+	return platform + "-" + arch
+}
 
 // Official CloakBrowser downloads must be authenticated before any extraction.
 // Other manually supplied publishers retain the existing download contract.
@@ -31,6 +58,9 @@ func verifyCloakBrowserArchive(ctx context.Context, client *http.Client, rawURL,
 		return err
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if strings.EqualFold(u.Hostname(), "cloakbrowser.dev") {
+		return verifyCloakBrowserProArchive(ctx, client, u, archivePath)
+	}
 	if !strings.EqualFold(u.Hostname(), "github.com") || len(parts) < 2 || !strings.EqualFold(parts[0], "CloakHQ") || !strings.EqualFold(parts[1], "cloakbrowser") {
 		return nil
 	}
@@ -62,6 +92,41 @@ func verifyCloakBrowserArchive(ctx context.Context, client *http.Client, rawURL,
 		return err
 	}
 	return verifyCloakManifest(file, manifest, signature, version[1], parts[5], ed25519.PublicKey(key))
+}
+
+func verifyCloakBrowserProArchive(ctx context.Context, client *http.Client, u *url.URL, archivePath string) error {
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if u.Scheme != "https" || len(parts) != 3 || parts[0] != "api" || parts[1] != "download" || !cloakBrowserProVersion.MatchString(parts[2]) {
+		return fmt.Errorf("CloakBrowser 最新版下载地址无效")
+	}
+	version := parts[2]
+	asset := "cloakbrowser-" + cloakBrowserPlatformTag()
+	if strings.HasPrefix(asset, "windows-") {
+		asset += ".zip"
+	} else {
+		asset += ".tar.gz"
+	}
+	base := "https://cloakbrowser.dev/releases/pro/chromium-v" + version + "/"
+	verifyCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	manifest, err := fetchCloakIntegrityFile(verifyCtx, client, base+"SHA256SUMS", 64*1024)
+	if err != nil {
+		return err
+	}
+	signature, err := fetchCloakIntegrityFile(verifyCtx, client, base+"SHA256SUMS.sig", 1024)
+	if err != nil {
+		return err
+	}
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	key, err := base64.StdEncoding.DecodeString(cloakBrowserSigningKey)
+	if err != nil {
+		return err
+	}
+	return verifyCloakManifest(file, manifest, signature, version, asset, ed25519.PublicKey(key))
 }
 
 func fetchCloakIntegrityFile(ctx context.Context, client *http.Client, rawURL string, limit int64) ([]byte, error) {

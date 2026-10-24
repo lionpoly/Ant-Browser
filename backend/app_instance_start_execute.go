@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"ant-chrome/backend/internal/browser"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"os/exec"
@@ -122,7 +123,18 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			return profile, nil
 		}
 
-		startErr := fmt.Errorf("%s", describeBrowserReadyFailure(plan.chromeBinaryPath, plan.assignedDebugPort, plan.totalReadyTimeout, readyErr))
+		engine := ""
+		if a.browserMgr != nil {
+			core, ok := a.browserMgr.GetCore(profile.CoreId)
+			if !ok {
+				core, ok = a.browserMgr.GetDefaultCore()
+			}
+			if ok {
+				engine = browser.ResolveFingerprintEngine(core)
+			}
+		}
+		failureMessage := describeBrowserReadyFailureForEngine(engine, plan.chromeBinaryPath, plan.assignedDebugPort, plan.totalReadyTimeout, readyErr)
+		startErr := fmt.Errorf("%s", failureMessage)
 		lastStartErr = startErr
 		log.Error("浏览器启动未就绪",
 			logger.F("profile_id", input.ProfileID),

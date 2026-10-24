@@ -63,6 +63,8 @@ func TestCloakOfficialDownloadsFailClosed(t *testing.T) {
 		"https://github.com/CloakHQ/cloakbrowser/releases/download/chromium-v145.0.7632.109.2/cloakbrowser-darwin-arm64.tar.gz",
 		"http://github.com/CloakHQ/cloakbrowser/releases/download/chromium-v145.0.7632.109.2/cloakbrowser-darwin-arm64.tar.gz",
 		"https://github.com/CloakHQ/cloakbrowser/releases/download/bad/cloakbrowser-darwin-arm64.tar.gz",
+		"https://cloakbrowser.dev/api/download/155.0.8059.39.1/extra",
+		"http://cloakbrowser.dev/api/download/155.0.8059.39.1",
 	} {
 		if err := verifyCloakBrowserArchive(context.Background(), client, raw, archive); err == nil {
 			t.Fatalf("unverified official URL accepted: %s", raw)
@@ -71,5 +73,19 @@ func TestCloakOfficialDownloadsFailClosed(t *testing.T) {
 	// Other user-managed sources retain the existing download contract.
 	if err := verifyCloakBrowserArchive(context.Background(), client, "https://example.com/custom.zip", archive); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCloakBrowserDownloadHeadersRequireOfficialLatestEndpoint(t *testing.T) {
+	keyed := cloakBrowserDownloadHeaders("https://cloakbrowser.dev/api/download/155.0.8059.39.1", "cb_test")
+	if keyed.Get("Authorization") != "Bearer cb_test" {
+		t.Fatalf("authorization header = %q", keyed.Get("Authorization"))
+	}
+	if keyed.Get("X-Platform") == "" {
+		t.Fatal("expected platform header")
+	}
+	custom := cloakBrowserDownloadHeaders("https://example.com/archive.tar.gz", "cb_test")
+	if len(custom) != 0 {
+		t.Fatalf("custom download unexpectedly received auth headers: %#v", custom)
 	}
 }

@@ -1,7 +1,8 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { Button, FormItem, Input, Modal, toast } from '../../../../shared/components'
 import { BrowserOpenURL } from '../../../../wailsjs/runtime/runtime'
 import type { BrowserProxy } from '../../types'
+import { saveCloakBrowserLicenseKey } from '../../api/cores'
 import type { CoreDownloadForm, CoreDownloadProgress } from '../coreManagement.types'
 import { CORE_DOWNLOAD_SOURCES } from './coreDownloadRecommendation'
 import type { CoreDownloadRecommendation, CoreDownloadSource } from './coreDownloadRecommendation'
@@ -37,8 +38,21 @@ export function CoreDownloadModal({
   onClose,
   onStart,
 }: CoreDownloadModalProps) {
+  const [savingLicense, setSavingLicense] = useState(false)
   const downloading = progress !== null && progress.phase !== 'error'
   const isRedownload = form.mode === 'redownload'
+
+  const handleSaveLicense = async () => {
+    setSavingLicense(true)
+    try {
+      await saveCloakBrowserLicenseKey(form.licenseKey || '')
+      toast.success('启动授权已保存，可直接启动已下载的内核，无需重新下载')
+    } catch (error) {
+      toast.error(String(error))
+    } finally {
+      setSavingLicense(false)
+    }
+  }
 
   const handleClose = () => {
     if (progress && progress.phase !== 'done' && progress.phase !== 'error') {
@@ -76,9 +90,24 @@ export function CoreDownloadModal({
             ))}
           </select>
           {form.source === 'cloakbrowser' && (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">推荐匹配当前平台的公开 Chromium 内核包；公开构建可能落后于当前 Chromium，请核对版本与发布时间。授权版本及指纹参数支持范围请查看上游说明。</p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">不填写 Key 时使用 GitHub 公开构建；填写 CloakBrowser Key 后自动获取当前平台的最新构建。</p>
           )}
         </FormItem>
+
+        {form.source === 'cloakbrowser' && (
+          <FormItem label="CloakBrowser Key（可选）">
+            <Input
+              type="password"
+              value={form.licenseKey || ''}
+              onChange={e => setForm(prev => ({ ...prev, licenseKey: e.target.value, url: '' }))}
+              placeholder="cb_xxxxxxxxx"
+              disabled={progress !== null}
+              autoComplete="off"
+            />
+            <Button variant="secondary" onClick={handleSaveLicense} loading={savingLicense} disabled={!form.licenseKey?.trim() || progress !== null} className="mt-2">保存启动授权</Button>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">下载成功或点击保存时，Key 会写入本机 ~/.cloakbrowser/license.key，由本机 CloakBrowser 共用。保存会替换已有授权；单独保存仅写入本机，不验证授权有效性。</p>
+          </FormItem>
+        )}
 
         <FormItem label="内核名称" required>
           <Input

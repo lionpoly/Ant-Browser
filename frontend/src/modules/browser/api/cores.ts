@@ -1,6 +1,33 @@
 import type { BrowserCore, BrowserCoreExtended, BrowserCoreInput, BrowserCoreValidateResult } from '../types'
 import { getBindings, getMockCores, setMockCores } from './runtime'
 
+export interface BrowserCloakBrowserVersionResult {
+  version: string
+  platform: string
+  downloadUrl: string
+  message: string
+}
+
+export async function saveCloakBrowserLicenseKey(licenseKey: string): Promise<void> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BrowserCloakBrowserLicenseSave) {
+    throw new Error('当前应用版本不支持保存 CloakBrowser 启动授权')
+  }
+  await bindings.BrowserCloakBrowserLicenseSave(licenseKey)
+}
+
+export async function fetchCloakBrowserVersion(licenseKey: string, proxyConfig = ''): Promise<BrowserCloakBrowserVersionResult> {
+  const bindings: any = await getBindings()
+  if (!bindings?.BrowserCloakBrowserVersion) {
+    throw new Error('当前应用版本不支持 CloakBrowser Key 查询')
+  }
+  const result = await bindings.BrowserCloakBrowserVersion({ licenseKey, proxyConfig })
+  if (!result?.version || !result?.downloadUrl) {
+    throw new Error(result?.message || 'CloakBrowser 没有返回可用版本')
+  }
+  return result
+}
+
 export async function fetchBrowserCores(): Promise<BrowserCore[]> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserCoreList) {
@@ -79,19 +106,19 @@ export async function importLocalBrowserCore(): Promise<BrowserCore | null> {
   return null
 }
 
-export async function BrowserCoreDownload(coreName: string, url: string, proxyConfig?: string): Promise<boolean> {
+export async function BrowserCoreDownload(coreName: string, url: string, proxyConfig?: string, licenseKey?: string): Promise<boolean> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserCoreDownload) {
-    await bindings.BrowserCoreDownload(coreName, url, proxyConfig || '')
+    await bindings.BrowserCoreDownload(coreName, url, proxyConfig || '', licenseKey || '')
     return true
   }
   return true
 }
 
-export async function redownloadBrowserCore(coreId: string, url: string, proxyConfig?: string): Promise<boolean> {
+export async function redownloadBrowserCore(coreId: string, url: string, proxyConfig?: string, licenseKey?: string): Promise<boolean> {
   const bindings: any = await getBindings()
   if (bindings?.BrowserCoreRedownload) {
-    await bindings.BrowserCoreRedownload(coreId, url, proxyConfig || '')
+    await bindings.BrowserCoreRedownload(coreId, url, proxyConfig || '', licenseKey || '')
     return true
   }
   return true

@@ -238,12 +238,20 @@ export function BrowserClearCookies(arg1) {
   return window['go']['main']['App']['BrowserClearCookies'](arg1);
 }
 
+export function BrowserCloakBrowserLicenseSave(arg1) {
+  return window['go']['main']['App']['BrowserCloakBrowserLicenseSave'](arg1);
+}
+
+export function BrowserCloakBrowserVersion(arg1) {
+  return window['go']['main']['App']['BrowserCloakBrowserVersion'](arg1);
+}
+
 export function BrowserCoreDelete(arg1) {
   return window['go']['main']['App']['BrowserCoreDelete'](arg1);
 }
 
-export function BrowserCoreDownload(arg1, arg2, arg3) {
-  return window['go']['main']['App']['BrowserCoreDownload'](arg1, arg2, arg3);
+export function BrowserCoreDownload(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BrowserCoreDownload'](arg1, arg2, arg3, arg4);
 }
 
 export function BrowserCoreExtendedInfo() {
@@ -262,8 +270,8 @@ export function BrowserCoreList() {
   return window['go']['main']['App']['BrowserCoreList']();
 }
 
-export function BrowserCoreRedownload(arg1, arg2, arg3) {
-  return window['go']['main']['App']['BrowserCoreRedownload'](arg1, arg2, arg3);
+export function BrowserCoreRedownload(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BrowserCoreRedownload'](arg1, arg2, arg3, arg4);
 }
 
 export function BrowserCoreSave(arg1) {

@@ -60,7 +60,7 @@ export function CoreManagementPage() {
 
   // 内核下载
   const [downloadModalOpen, setDownloadModalOpen] = useState(false)
-  const [downloadForm, setDownloadForm] = useState<CoreDownloadForm>({ source: 'fingerprint-chromium', name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
+  const [downloadForm, setDownloadForm] = useState<CoreDownloadForm>({ source: 'fingerprint-chromium', name: '', url: '', proxyMode: 'system', proxyId: '', licenseKey: '', mode: 'download' })
   const [downloadProgress, setDownloadProgress] = useState<CoreDownloadProgress | null>(null)
   const [downloadRecommendation, setDownloadRecommendation] = useState<CoreDownloadRecommendation | null>(null)
   const [recommendationRefresh, setRecommendationRefresh] = useState(0)
@@ -304,17 +304,20 @@ export function CoreManagementPage() {
     const source = downloadForm.source
     const isCurrent = () => active && epoch === recommendationEpoch.current
     let active = true
+    const proxyProfile = proxies.find(p => p.proxyId === downloadForm.proxyId)
+    const recommendationProxy = downloadForm.proxyMode === 'custom' ? (proxyProfile?.proxyConfig || '') : ''
+    const debounce = window.setTimeout(() => { void load() }, downloadForm.licenseKey ? 500 : 0)
     const load = async () => {
       setDownloadRecommendation(null)
       setDownloadRecommendationLoading(true)
       setDownloadRecommendationError('')
       try {
         const runtimeEnv = await Promise.resolve().then(() => Environment()).catch(() => null)
-        const recommendation = await fetchCoreDownloadRecommendation(runtimeEnv, controller.signal, downloadForm.source)
+        const recommendation = await fetchCoreDownloadRecommendation(runtimeEnv, controller.signal, downloadForm.source, downloadForm.licenseKey || '', recommendationProxy)
         if (!isCurrent()) return
         setDownloadRecommendation(recommendation)
         if (!recommendation) {
-          setDownloadRecommendationError('当前来源没有匹配此系统和架构的公开内核包，请打开 Releases 查看')
+          setDownloadRecommendationError(downloadForm.licenseKey ? '当前许可证没有返回可用的内核版本' : '当前来源没有匹配此系统和架构的公开内核包，请打开 Releases 查看')
           return
         }
         if (!downloadStarted.current && downloadForm.mode !== 'redownload') {
@@ -326,13 +329,12 @@ export function CoreManagementPage() {
         if (isCurrent()) setDownloadRecommendationLoading(false)
       }
     }
-    void load()
-    return () => { active = false; controller.abort() }
-  }, [downloadModalOpen, downloadForm.source, recommendationRefresh])
+    return () => { active = false; controller.abort(); window.clearTimeout(debounce) }
+  }, [downloadModalOpen, downloadForm.source, downloadForm.licenseKey, downloadForm.proxyMode, downloadForm.proxyId, proxies, recommendationRefresh])
 
   const handleOpenDownload = () => {
     invalidateRecommendation()
-    setDownloadForm({ source: 'fingerprint-chromium', name: '', url: '', proxyMode: 'system', proxyId: '', mode: 'download' })
+    setDownloadForm({ source: 'fingerprint-chromium', name: '', url: '', proxyMode: 'system', proxyId: '', licenseKey: '', mode: 'download' })
     setDownloadProgress(null)
     setDownloadRecommendation(null)
     setDownloadRecommendationError('')
@@ -342,7 +344,7 @@ export function CoreManagementPage() {
 
   const handleRedownload = (record: CoreDisplayInfo) => {
     invalidateRecommendation()
-    setDownloadForm({ source: 'fingerprint-chromium', coreId: record.coreId, name: record.coreName, url: '', proxyMode: 'system', proxyId: '', mode: 'redownload' })
+    setDownloadForm({ source: 'fingerprint-chromium', coreId: record.coreId, name: record.coreName, url: '', proxyMode: 'system', proxyId: '', licenseKey: '', mode: 'redownload' })
     setDownloadProgress(null)
     setDownloadRecommendation(null)
     setDownloadRecommendationError('')
@@ -442,9 +444,9 @@ export function CoreManagementPage() {
       }
 
       if (downloadForm.mode === 'redownload') {
-        await redownloadBrowserCore(downloadForm.coreId || '', downloadForm.url.trim(), targetProxy)
+        await redownloadBrowserCore(downloadForm.coreId || '', downloadForm.url.trim(), targetProxy, downloadForm.licenseKey)
       } else {
-        await BrowserCoreDownload(downloadForm.name.trim(), downloadForm.url.trim(), targetProxy)
+        await BrowserCoreDownload(downloadForm.name.trim(), downloadForm.url.trim(), targetProxy, downloadForm.licenseKey)
       }
     } catch (err: any) {
       downloadStarted.current = false

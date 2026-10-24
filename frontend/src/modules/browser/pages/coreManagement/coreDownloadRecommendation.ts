@@ -1,3 +1,5 @@
+import { fetchCloakBrowserVersion } from '../../api/cores'
+
 export const FINGERPRINT_CHROMIUM_RELEASES_URL = 'https://github.com/adryfish/fingerprint-chromium/releases'
 
 export type CoreDownloadSource = 'fingerprint-chromium' | 'cloakbrowser'
@@ -160,12 +162,36 @@ async function findCloakBrowserRelease(target: CoreDownloadTarget, signal?: Abor
   return null
 }
 
+async function findCloakBrowserKeyedRelease(target: CoreDownloadTarget, licenseKey: string, proxyConfig = '', signal?: AbortSignal): Promise<CoreDownloadRecommendation | null> {
+  if (!target.platform || !target.arch || (target.platform === 'windows' && target.arch !== 'amd64')) return null
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const result = await fetchCloakBrowserVersion(licenseKey, proxyConfig)
+  const version = String(result.version || '').trim()
+  if (!/^\d+(?:\.\d+){3,4}$/.test(version)) return null
+  const platform = `${target.platform}-${target.arch === 'amd64' ? 'x64' : 'arm64'}`
+  const archive = `cloakbrowser-${platform}${target.platform === 'windows' ? '.zip' : '.tar.gz'}`
+  return {
+    target,
+    releaseTag: `chromium-v${version}`,
+    publishedAt: '',
+    assetName: archive,
+    downloadUrl: result.downloadUrl,
+    releasesUrl: CORE_DOWNLOAD_SOURCES.cloakbrowser.releasesUrl,
+    namePlaceholder: `例如: cloakbrowser-${version.split('.')[0]}`,
+  }
+}
+
 export async function fetchCoreDownloadRecommendation(
   env: CoreDownloadRuntimeEnvironment | null | undefined,
   signal?: AbortSignal,
   source: CoreDownloadSource = 'fingerprint-chromium',
+  licenseKey = '',
+  proxyConfig = '',
 ): Promise<CoreDownloadRecommendation | null> {
   const target = resolveCoreDownloadTarget(env)
+  if (source === 'cloakbrowser' && licenseKey.trim()) {
+    return findCloakBrowserKeyedRelease(target, licenseKey.trim(), proxyConfig, signal)
+  }
   const release = source === 'cloakbrowser'
     ? await findCloakBrowserRelease(target, signal)
     : await fetchReleaseData(FINGERPRINT_CHROMIUM_LATEST_RELEASE_API_URL, signal) as GitHubReleaseResponse
